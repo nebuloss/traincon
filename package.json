@@ -1,0 +1,27 @@
+{
+  "name": "suivi-tgv",
+  "version": "1.0.0",
+  "description": "Live tracking for French trains, built on SNCF open data",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --max-old-space-size=3072 --test test/*.test.mjs",
+    "start": "node src/server.js",
+    "onboard": "node src/onboard.mjs",
+    "fetch:geo": "bash scripts/fetch-geo.sh",
+    "compare": "node --max-old-space-size=3072 src/compare.mjs",
+    "logger": "node src/logger.mjs",
+    "dev:replay": "SNCF_FEED_FILE=fixtures/sncf-trip-updates.pb node --max-old-space-size=3072 src/server.js",
+    "sources": "node --max-old-space-size=3072 src/compare-sources.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "gtfs-realtime-bindings": "^2.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nebuloss/suivi-tgv.git"
+  }
+}

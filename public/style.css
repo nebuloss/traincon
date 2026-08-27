@@ -1,0 +1,660 @@
+/* ---------------------------------------------------------------
+   Theming
+   Light is the base palette on bare :root; dark is redefined twice —
+   in the prefers-color-scheme query (guarded so an explicit light
+   choice still wins) and on [data-theme="dark"], so the in-app toggle
+   overrides the OS in both directions.
+
+   `color-scheme` is what makes form controls, scrollbars and the caret
+   follow the theme; without it they stay light on a dark page.
+   --------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+  --bg: #f4f6fa;
+  --panel: #ffffff;
+  --panel-2: #eef2f7;
+  --line: #dde4ed;
+  --fg: #101720;
+  --muted: #5d6b7d;
+  --accent: #1f6fd0;
+  --on-accent: #ffffff;
+  --violet: #6d3fd4;
+  --ok: #12855c;
+  --warn: #a35c00;
+  /* Delay tiers are amber then orange. Red is kept for cancellations only:
+     painting a 50-minute delay in red made every screen alarming and stopped
+     the colour meaning anything. */
+  --late: #9a6100;
+  --verylate: #b4460b;
+  --bad: #c62330;
+  --dead: #8695a6;
+  --rail: #9fb0c4;
+  --rail-hs: #6f8fb5;
+  --shadow: 0 8px 30px rgba(16, 23, 32, .16);
+  --radius: 14px;
+  font-synthesis-weight: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e1116; --panel: #171b22; --panel-2: #1e242d; --line: #2a323d;
+    --fg: #e8edf4; --muted: #97a3b4; --accent: #4da3ff; --on-accent: #06121f;
+    --violet: #a98bff; --ok: #2ecc8f; --warn: #f5a524;
+    --late: #f0b429; --verylate: #fb8b3c; --bad: #f2545b;
+    --dead: #7a8798; --rail: #3a4552; --rail-hs: #5b7a9e;
+    --shadow: 0 8px 30px rgba(0, 0, 0, .5);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1116; --panel: #171b22; --panel-2: #1e242d; --line: #2a323d;
+  --fg: #e8edf4; --muted: #97a3b4; --accent: #4da3ff; --on-accent: #06121f;
+  --violet: #a98bff; --ok: #2ecc8f; --warn: #f5a524;
+  --late: #f0b429; --verylate: #fb8b3c; --bad: #f2545b;
+  --dead: #7a8798; --rail: #3a4552; --rail-hs: #5b7a9e;
+  --shadow: 0 8px 30px rgba(0, 0, 0, .5);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+button, input, select { font: inherit; }
+button { touch-action: manipulation; }
+
+/* ---------- top bar ---------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 14px 10px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 30;
+}
+.brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.brand h1 { font-size: 16px; margin: 0; letter-spacing: -0.01em; white-space: nowrap; }
+.logo {
+  width: 22px; height: 22px; border-radius: 6px; flex: 0 0 auto;
+  background: linear-gradient(135deg, var(--accent), var(--violet));
+}
+.head-right { display: flex; align-items: center; gap: 8px; }
+.lang-sel {
+  width: auto; min-width: 0; padding: 5px 8px; font-size: 11px;
+  min-height: 28px; border-radius: 999px; background: var(--panel-2);
+  border: 1px solid var(--line); color: var(--muted);
+}
+.feed-state {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dead); flex: 0 0 auto; }
+.dot.live { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+.dot.stale { background: var(--warn); }
+.dot.syncing { animation: sync .9s ease-in-out infinite; }
+@keyframes sync { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .dot.syncing { animation: none; } }
+
+.theme-toggle {
+  display: inline-flex; gap: 2px; padding: 2px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--panel-2);
+}
+.theme-toggle button {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  border-radius: 999px; padding: 5px 9px; font-size: 11px; line-height: 1.2; min-height: 28px;
+}
+.theme-toggle button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+
+/* ---------- outage / status banner ---------- */
+.banner {
+  position: sticky; top: 0; z-index: 25;
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 11px 14px; font-size: 13.5px; line-height: 1.4;
+  border-bottom: 1px solid var(--line);
+}
+.banner[hidden] { display: none; }
+.banner .b-ic { flex: 0 0 auto; font-size: 15px; line-height: 1.3; }
+.banner .b-txt { flex: 1; min-width: 0; }
+.banner .b-txt strong { display: block; }
+.banner .b-sub { opacity: .85; font-size: 12.5px; margin-top: 2px; }
+.banner button {
+  flex: 0 0 auto; border: 1px solid currentColor; background: transparent;
+  color: inherit; border-radius: 8px; padding: 6px 11px;
+  font-size: 12.5px; cursor: pointer; min-height: 34px;
+}
+.banner.down {
+  background: color-mix(in srgb, var(--bad) 14%, var(--panel));
+  color: var(--bad); border-bottom-color: color-mix(in srgb, var(--bad) 35%, var(--line));
+}
+.banner.stale {
+  background: color-mix(in srgb, var(--warn) 14%, var(--panel));
+  color: var(--warn); border-bottom-color: color-mix(in srgb, var(--warn) 35%, var(--line));
+}
+.banner.replay {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  color: var(--accent); border-bottom-color: color-mix(in srgb, var(--accent) 32%, var(--line));
+}
+
+/* ---------- layout ---------- */
+main {
+  padding: 14px 12px calc(84px + env(safe-area-inset-bottom));
+  max-width: 760px; margin: 0 auto;
+}
+.view { display: none; }
+.view.active { display: block; }
+
+/* ---------- bottom tab bar (thumb reach) ---------- */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  display: flex; background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+  backdrop-filter: saturate(180%) blur(12px);
+}
+.tabbar .tab {
+  flex: 1; border: 0; background: transparent; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 4px 9px; color: var(--muted); font-size: 11px; min-height: 56px;
+}
+.tabbar .tab .ic { font-size: 18px; line-height: 1; }
+.tabbar .tab.active { color: var(--accent); }
+
+/* ---------- controls ---------- */
+.search-wrap { position: relative; }
+input[type=search], input[type=text], select {
+  width: 100%; padding: 12px 40px 12px 14px; font-size: 16px; /* 16px: no iOS zoom */
+  border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg); -webkit-appearance: none; appearance: none;
+}
+select { padding-right: 34px; background-image: none; }
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+input[type=search]::-webkit-search-cancel-button { display: none; }
+.clear-btn {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  border: 0; background: transparent; color: var(--muted);
+  width: 34px; height: 34px; border-radius: 50%; cursor: pointer; font-size: 14px;
+}
+button.primary {
+  border: 0; border-radius: 12px; padding: 12px 20px; cursor: pointer; min-height: 46px;
+  background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 15px;
+}
+button.primary:active { transform: translateY(1px); }
+.ghost-btn {
+  display: block; width: 100%; margin-top: 16px; min-height: 44px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  border-radius: 999px; padding: 10px 16px; font-size: 13px; cursor: pointer;
+}
+.ghost-btn:disabled { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }
+.hint { color: var(--muted); font-size: 13px; margin: 10px 2px; }
+
+.chips { display: flex; gap: 7px; margin: 12px 0; overflow-x: auto; padding-bottom: 2px; }
+.chips button {
+  flex: 0 0 auto; border: 1px solid var(--line); background: var(--panel);
+  color: var(--muted); border-radius: 999px; padding: 7px 14px;
+  font-size: 13px; cursor: pointer; min-height: 36px;
+}
+.chips button[aria-pressed="true"] {
+  background: var(--accent); color: var(--on-accent); border-color: var(--accent);
+}
+
+.empty { color: var(--muted); text-align: center; padding: 32px 16px; font-size: 14px; }
+.empty-icon { font-size: 40px; margin-bottom: 10px; }
+.empty p { margin: 0 0 10px; }
+.empty strong { color: var(--fg); font-size: 16px; }
+.empty .primary { margin-top: 8px; }
+
+/* ---------- badges & delay colours ---------- */
+.badge {
+  flex: 0 0 auto; font-size: 10.5px; font-weight: 700; letter-spacing: .03em;
+  padding: 3px 7px; border-radius: 6px; text-transform: uppercase;
+  background: var(--panel-2); color: var(--muted); white-space: nowrap;
+}
+.badge.tgv { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.badge.ic  { background: color-mix(in srgb, var(--violet) 20%, transparent); color: var(--violet); }
+.badge.ter { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+/* Delay tiers. Put these on the figure itself, never on a container: a
+   status sentence tinted orange reads as if the *position* were late. */
+.ontime { color: var(--ok); }
+.late { color: var(--late); }
+.verylate { color: var(--verylate); }
+.cancelled { color: var(--bad); }
+.um-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: 2px 6px;
+  border-radius: 5px; background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent); white-space: nowrap;
+}
+
+/* ---------- bookmark star ---------- */
+.star {
+  flex: 0 0 auto; width: 42px; height: 42px; padding: 0;
+  border: 0; background: transparent; cursor: pointer;
+  font-size: 21px; line-height: 1; color: var(--dead);
+  border-radius: 50%; display: grid; place-items: center;
+  transition: color .15s, transform .12s;
+}
+.star:hover { color: var(--muted); }
+.star.on { color: var(--warn); }
+.star:active { transform: scale(.86); }
+.star:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+/* ---------- suggest list ---------- */
+.suggest-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sg-row {
+  margin: 0; display: flex; align-items: center; gap: 2px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel); padding-left: 4px; overflow: hidden;
+}
+.sg-row:has(.sg:active) { background: var(--panel-2); }
+.sg {
+  flex: 1; min-width: 0; text-align: left; cursor: pointer; min-height: 58px;
+  display: flex; align-items: center; gap: 10px; padding: 11px 13px 11px 8px;
+  border: 0; background: transparent; color: var(--fg);
+}
+.sg-main { flex: 1; min-width: 0; }
+.sg-top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.sg-num { font-weight: 700; }
+.sg-od { color: var(--muted); font-size: 13px; margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-why { color: var(--dead); font-size: 11.5px; margin-top: 1px; }
+.sg-delay { flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 600; }
+
+/* ---------------------------------------------------------------
+   Bookmark cards
+   Built for scanning several trains at once, not for reading one in
+   depth — that is what the modal is for. One bar, one line of state,
+   one arrival time.
+   --------------------------------------------------------------- */
+.cards { display: flex; flex-direction: column; gap: 10px; }
+.card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); overflow: hidden; cursor: pointer;
+  padding: 4px 14px 12px 6px;
+}
+.card:active { background: var(--panel-2); }
+.card.is-cancelled { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+
+.cd-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.cd-num { font-weight: 700; font-size: 15px; white-space: nowrap; }
+.cd-delay {
+  margin-left: auto; font-weight: 700; font-size: 15px;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.cd-od {
+  color: var(--muted); font-size: 12.5px; padding: 0 0 0 8px; margin-top: -2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* the compact bar: dots only, never labels */
+.mp { position: relative; height: 22px; margin: 11px 8px 9px 12px; }
+.mp-rail {
+  position: absolute; left: 0; right: 0; top: 9px; height: 3px;
+  background: var(--line); border-radius: 2px;
+}
+.mp-fill {
+  position: absolute; left: 0; top: 9px; height: 3px;
+  background: var(--accent); border-radius: 2px; transition: width .8s ease;
+}
+.mp-dot {
+  position: absolute; top: 6px; width: 9px; height: 9px; margin-left: -4.5px;
+  border-radius: 50%; background: var(--panel);
+  border: 2px solid var(--line); box-sizing: border-box;
+}
+.mp-dot.done { border-color: var(--accent); background: var(--accent); }
+.mp-dot.end { width: 11px; height: 11px; top: 5px; margin-left: -5.5px; }
+.mp-dot.skip { border-color: var(--bad); background: var(--panel); }
+.mp-train {
+  position: absolute; top: -2px; margin-left: -9px; font-size: 15px; line-height: 1;
+  z-index: 2; transition: left .8s ease;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35));
+}
+.mp-train.at-stop { animation: pulse 1.9s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) {
+  .mp-fill, .mp-train { transition: none; }
+  .mp-train.at-stop { animation: none; }
+}
+
+.cd-foot {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding-left: 8px; font-size: 13px;
+}
+.cd-where {
+  color: var(--fg); min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.cd-next { margin-left: auto; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cd-next b { color: var(--fg); }
+.cd-next i { font-style: normal; margin-left: 6px; }
+.cd-arr {
+  padding: 5px 0 0 8px; font-size: 12.5px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 420px) {
+  .cd-next { margin-left: 0; width: 100%; }
+}
+
+/* ---------- next-stop focus ---------- */
+.focus { padding: 11px 13px; background: var(--panel-2); border-top: 1px solid var(--line); }
+.focus .label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.focus .time-row { display: flex; align-items: baseline; gap: 9px; margin-top: 3px; flex-wrap: wrap; }
+.focus .live-time { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.focus .planned-time { font-size: 13px; color: var(--muted); text-decoration: line-through; }
+.focus .countdown { font-size: 12.5px; color: var(--muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.focus .countdown strong { color: var(--fg); }
+
+/* ---------------------------------------------------------------
+   Journey timeline (vertical)
+   Fixed-height rows: the marker is positioned arithmetically from the
+   row height, so nothing has to be measured at runtime. Names get a
+   whole row each, which is the point — horizontally they overlapped.
+   --------------------------------------------------------------- */
+.tl {
+  --row-h: 46px;      /* must match ROW_H in app.js */
+  --gutter: 34px;
+  position: relative;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.tl-list { list-style: none; margin: 0; padding: 0; }
+.tl-row, .tl-gap {
+  display: grid;
+  grid-template-columns: var(--gutter) 1fr auto;
+  align-items: center;
+  height: var(--row-h);
+  padding-right: 14px;
+  font-size: 14px;
+}
+.tl-rail-cell { position: relative; height: 100%; display: grid; place-items: center; }
+/* the rail itself, drawn behind every row */
+.tl-rail-cell::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%;
+  width: 2px; margin-left: -1px; background: var(--line);
+}
+.tl-row:first-child .tl-rail-cell::before { top: 50%; }
+.tl-row.terminus .tl-rail-cell::before { bottom: 50%; }
+
+.tl-dot {
+  position: relative; z-index: 1;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--panel); border: 2.5px solid var(--line); box-sizing: border-box;
+}
+.tl-row.past .tl-dot { border-color: var(--muted); background: var(--muted); }
+.tl-row.next .tl-dot {
+  border-color: var(--accent); background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.tl-row.terminus .tl-dot { width: 14px; height: 14px; }
+.tl-row.skipped .tl-dot { border-color: var(--bad); background: var(--panel); }
+
+.tl-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-right: 10px;
+}
+.tl-row.past .tl-name { color: var(--muted); }
+.tl-row.next .tl-name { font-weight: 600; }
+.tl-row.terminus .tl-name { font-weight: 600; }
+.tl-row.skipped .tl-name { text-decoration: line-through; color: var(--bad); }
+.tl-times {
+  display: flex; flex-direction: column; align-items: flex-end;
+  line-height: 1.25; white-space: nowrap;
+}
+.tl-eta { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 15px; }
+.tl-meta { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tl-meta .old { text-decoration: line-through; font-style: normal; }
+.tl-meta b { font-weight: 600; }
+.tl-row.past .tl-eta {
+  font-weight: 500; opacity: .7; color: var(--muted) !important;
+  /* Dotted underline: these are forecasts the feed never confirmed. */
+  text-decoration: underline dotted; text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+.tl-row.past .tl-meta b { color: var(--muted) !important; }
+/* Only the stop you are heading for is tinted; the rest stay neutral so the
+   colour picks out one thing instead of the whole list. */
+.tl-row:not(.next):not(.terminus) .tl-eta { color: var(--fg); }
+
+/* elided stops in the compact card view */
+.tl-gap { color: var(--dead); font-size: 12px; height: 26px; }
+.tl-dots {
+  position: relative; z-index: 1; width: 3px; height: 14px;
+  background: repeating-linear-gradient(var(--dead) 0 3px, transparent 3px 6px);
+}
+
+/* progress fill and the train marker ride on the rail */
+.tl-fill {
+  position: absolute; left: calc(var(--gutter) / 2); top: calc(6px + var(--row-h) / 2);
+  width: 2px; margin-left: -1px; background: var(--accent);
+  border-radius: 2px; transition: height .8s ease;
+}
+.tl-train {
+  position: absolute; left: calc(var(--gutter) / 2); margin-top: 6px;
+  transform: translate(-50%, -50%);
+  font-size: 17px; line-height: 1; z-index: 3;
+  transition: top .8s ease;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .4));
+}
+.tl-train.at-stop { animation: pulse 1.9s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+@media (prefers-reduced-motion: reduce) {
+  .tl-fill, .tl-train { transition: none; }
+  .tl-train.at-stop { animation: none; }
+}
+
+/* ---------- modal / bottom sheet ---------- */
+.modal { position: fixed; inset: 0; z-index: 60; }
+.modal[hidden] { display: none; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.45); animation: fade .18s ease; }
+@keyframes fade { from { opacity: 0; } }
+.modal-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  /* A definite height, not max-height: sizing to content left the sheet
+     half-empty on a phone and boxed the map into a fixed strip. The sheet
+     owns the height; the active panel flexes into what is left and scrolls
+     itself. dvh so a retracting browser toolbar does not clip it. */
+  height: 92vh; height: 92dvh;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--panel); border-top: 1px solid var(--line);
+  border-radius: 18px 18px 0 0; box-shadow: var(--shadow);
+  padding-top: 8px;
+  animation: rise .24s cubic-bezier(.2,.8,.3,1);
+}
+.modal-grip, .m-head, .m-tabs { flex: 0 0 auto; }
+.m-panel { flex: 1 1 auto; min-height: 0; }
+.m-panel.active {
+  display: flex; flex-direction: column;
+  overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+@keyframes rise { from { transform: translateY(100%); } }
+/* Generous hit area around a small visual handle, and no browser gesture
+   competing with the drag. */
+.modal-grip {
+  position: relative; width: 100%; height: 22px; margin: 0 0 2px;
+  cursor: grab; touch-action: none; flex: 0 0 auto;
+}
+.modal-grip::before {
+  content: ""; position: absolute; left: 50%; top: 9px;
+  width: 40px; height: 4px; margin-left: -20px;
+  border-radius: 2px; background: var(--line);
+}
+.modal-grip:active { cursor: grabbing; }
+.modal-grip:active::before { background: var(--muted); }
+.m-head { touch-action: pan-y; }
+@media (min-width: 620px) { .m-head { touch-action: auto; } }
+.modal-close {
+  position: absolute; right: 8px; top: 8px; width: 36px; height: 36px;
+  border: 0; border-radius: 50%; background: var(--panel-2); color: var(--muted);
+  cursor: pointer; font-size: 14px; z-index: 3;
+}
+@media (min-width: 620px) {
+  .modal-sheet {
+    left: 50%; bottom: auto; top: 50%; transform: translate(-50%, -50%);
+    width: min(600px, 94vw); border-radius: 18px;
+    height: 86vh; height: 86dvh;
+    border: 1px solid var(--line);
+    animation: pop .2s cubic-bezier(.2,.8,.3,1);
+  }
+  @keyframes pop { from { transform: translate(-50%, -48%); opacity: 0; } }
+  .modal-grip { display: none; }
+}
+.m-head { padding: 6px 16px 10px 8px; }
+.m-delay { margin-left: auto; font-size: 15px; }
+.m-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 19px; font-weight: 700; }
+.m-title .star { font-size: 24px; }
+.m-od { color: var(--muted); font-size: 14px; margin-top: 3px; }
+.m-line { color: var(--dead); font-size: 12px; margin-top: 2px; }
+.m-um { color: var(--accent); font-size: 12.5px; margin-top: 5px; }
+.m-sec { border-top: 1px solid var(--line); }
+.m-actions { display: flex; gap: 8px; padding: 12px 16px; flex-wrap: wrap; border-top: 1px solid var(--line); }
+.m-actions button {
+  flex: 1 1 auto; min-height: 46px; min-width: 130px;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--fg);
+  border-radius: 10px; padding: 10px 12px; font-size: 13.5px; cursor: pointer;
+}
+.m-actions button.danger { color: var(--bad); }
+.m-actions button.accent { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.pos-note { padding: 0 16px 12px; font-size: 12.5px; color: var(--muted); }
+.qual {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+  font-size: 11px; border: 1px solid var(--line); color: var(--muted);
+}
+.qual.ok { border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); color: var(--ok); }
+.qual.coarse { border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); color: var(--warn); }
+
+/* ---------- modal sub-tabs ---------- */
+.m-tabs {
+  display: flex; gap: 4px; padding: 0 12px 10px;
+  border-bottom: 1px solid var(--line); position: sticky; top: 0;
+  background: var(--panel); z-index: 2;
+}
+.m-tabs button {
+  flex: 1; border: 0; background: transparent; cursor: pointer;
+  color: var(--muted); font-size: 14px; padding: 9px 8px; min-height: 42px;
+  border-radius: 10px;
+}
+.m-tabs button.active { background: var(--panel-2); color: var(--fg); font-weight: 600; }
+.m-panel { display: none; }
+
+/* ---------- overview panel ---------- */
+.ov-status {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 16px; border-bottom: 1px solid var(--line);
+}
+.ov-ic { font-size: 26px; line-height: 1.1; flex: 0 0 auto; }
+.ov-txt { min-width: 0; }
+.ov-txt strong { display: block; font-size: 18px; line-height: 1.25; letter-spacing: -0.01em; }
+.ov-sub { display: block; color: var(--muted); font-size: 13px; margin-top: 3px; }
+.ov-status { color: var(--fg); }
+.ov-status.cancelled strong { color: var(--bad); }
+
+.ov-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  background: var(--line); border-bottom: 1px solid var(--line);
+}
+.ov-cell {
+  background: var(--panel); padding: 11px 14px;
+  display: flex; flex-direction: column; gap: 1px; min-width: 0;
+}
+.ov-k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.ov-v {
+  font-size: 15px; font-weight: 600; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ov-s {
+  font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 380px) { .ov-grid { grid-template-columns: 1fr; } }
+
+/* ---------------------------------------------------------------
+   Journal
+   One row shape for every entry — status, revisions, technical
+   fields — so the panel reads as a single list rather than three
+   stacked designs. Only the key's colour varies.
+   --------------------------------------------------------------- */
+.jl-h {
+  margin: 0; padding: 16px 16px 7px; font-size: 11.5px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+}
+.jl { border-top: 1px solid var(--line); }
+.jl-row {
+  display: grid; grid-template-columns: 92px 1fr auto;
+  gap: 12px; align-items: baseline;
+  padding: 10px 16px; font-size: 13.5px; line-height: 1.45;
+  border-bottom: 1px solid var(--line);
+}
+.jl-key {
+  font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  color: var(--muted); text-transform: uppercase;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.jl-main { min-width: 0; overflow-wrap: anywhere; }
+.jl-main strong { font-weight: 600; }
+.jl-main code { font-size: 12px; background: var(--panel-2); padding: 1px 6px; border-radius: 4px; }
+.jl-meta {
+  font-size: 11.5px; color: var(--muted); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.jl-row.t-ok  .jl-key { color: var(--ok); }
+.jl-row.t-warn .jl-key { color: var(--warn); }
+.jl-row.t-bad .jl-key { color: var(--bad); }
+@media (max-width: 420px) {
+  .jl-row { grid-template-columns: 78px 1fr; }
+  .jl-meta { grid-column: 2; color: var(--dead); }
+}
+
+/* ---------- map panel ---------- */
+#map {
+  flex: 1 1 auto; min-height: 220px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.map-foot {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; padding: 10px 16px 4px;
+  font-size: 12.5px; color: var(--muted);
+}
+.map-modes { display: flex; gap: 3px; padding: 3px; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 999px; }
+.map-modes button {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  border-radius: 999px; padding: 7px 12px; font-size: 12.5px; min-height: 34px;
+}
+.map-modes button.active { background: var(--accent); color: var(--on-accent); }
+.map-legend-inline i.sw { margin-left: 8px; }
+.m-panel .disclaimer { flex: 0 0 auto; padding: 0 16px 14px; margin-top: 6px; }
+#mpanel-carte { overflow: hidden; }   /* the map handles its own gestures */
+
+.map-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); margin-top: 10px; }
+.map-legend i.sw { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+i.sw.ontime { background: var(--ok); } i.sw.late { background: var(--late); }
+i.sw.verylate { background: var(--verylate); } i.sw.cancelled { background: var(--dead); }
+.disclaimer { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+.train-marker { width: 16px; height: 16px; cursor: pointer; line-height: 0; }
+.train-marker svg { display: block; }
+.train-marker.is-stopped svg { opacity: .75; transform: scale(.72); }
+.train-marker.is-coarse svg { opacity: .55; }
+.train-marker.is-um svg { filter: drop-shadow(0 0 3px currentColor); }
+.maplibregl-popup-content {
+  background: var(--panel); color: var(--fg); border-radius: 10px;
+  font-size: 13px; padding: 10px 12px; box-shadow: var(--shadow);
+}
+.maplibregl-popup-content strong { display: block; margin-bottom: 3px; }
+.maplibregl-popup-tip { border-top-color: var(--panel) !important; border-bottom-color: var(--panel) !important; }
+
+/* ---------- toast ---------- */
+.toast {
+  position: fixed; left: 50%; bottom: calc(78px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 16px); max-width: min(92vw, 460px);
+  background: var(--panel-2); color: var(--fg); border: 1px solid var(--line);
+  padding: 11px 16px; border-radius: 12px; font-size: 14px; box-shadow: var(--shadow);
+  opacity: 0; pointer-events: none; transition: .2s; z-index: 70; text-align: center;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }

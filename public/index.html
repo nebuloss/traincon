@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Suivi TGV — temps réel</title>
+<!-- The page ships its own light and dark palettes. -->
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1116" media="(prefers-color-scheme: dark)">
+<!-- Tells Dark Reader to stand down: inverting a page that already has a
+     dark theme produces muddy greys and breaks the map tiles. -->
+<meta name="darkreader-lock">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://unpkg.com">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="/style.css">
+<script>
+  // Applied before first paint to avoid a flash of the wrong theme.
+  // Stored via JSON.stringify, so the value on disk is quoted.
+  try {
+    var t = JSON.parse(localStorage.getItem('sncf.theme'));
+    if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+  } catch (e) { /* absent or private mode */ }
+</script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"></span>
+    <h1 data-i18n="app.title">Suivi&nbsp;TGV</h1>
+  </div>
+  <div class="head-right">
+    <div class="theme-toggle" id="themeToggle" role="group" data-i18n-aria="theme.group" aria-label="Thème">
+      <button data-theme-set="auto" data-i18n="theme.auto" title="Auto">Auto</button>
+      <button data-theme-set="light" title="Clair" aria-label="Clair">☀</button>
+      <button data-theme-set="dark"  title="Sombre" aria-label="Sombre">☾</button>
+    </div>
+    <select id="langSel" class="lang-sel" aria-label="Language"></select>
+    <div class="feed-state" id="feedState" title="Fraîcheur du flux SNCF">
+      <span class="dot" id="feedDot"></span><span id="feedAge">…</span>
+    </div>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main id="main">
+
+  <!-- ============ MES TRAINS ============ -->
+  <section id="view-watch" class="view active" aria-label="Mes trains">
+    <div id="watchList" class="cards"></div>
+    <div id="watchEmpty" class="empty">
+      <div class="empty-icon" aria-hidden="true">🚄</div>
+      <p><strong data-i18n="watch.empty.title">Aucun train suivi</strong></p>
+      <p data-i18n="watch.empty.body">Cherchez votre train par son numéro…</p>
+      <button class="primary" data-goto="search" data-i18n="watch.empty.cta">Chercher un train</button>
+    </div>
+    <button id="notifyBtn" class="ghost-btn" data-i18n="alerts.enable">🔕 Activer les alertes</button>
+  </section>
+
+  <!-- ============ RECHERCHE ============ -->
+  <section id="view-search" class="view" aria-label="Recherche">
+    <div class="search-wrap">
+      <input id="searchInput" type="search" enterkeyhint="search" autocomplete="off"
+             autocapitalize="off" spellcheck="false"
+             data-i18n-placeholder="search.placeholder" placeholder="N° de train, gare, destination…"
+             data-i18n-aria="search.label" aria-label="Rechercher un train" role="combobox"
+             aria-expanded="false" aria-controls="suggestList">
+      <button id="searchClear" class="clear-btn" data-i18n-aria="search.clear" aria-label="Effacer" hidden>✕</button>
+    </div>
+    <div class="chips" id="familyChips" role="group" aria-label="Filtrer par type">
+      <button data-family="all" data-i18n="family.all" aria-pressed="true">Tous</button>
+      <button data-family="tgv" data-i18n="family.tgv" aria-pressed="false">TGV</button>
+      <button data-family="ter" data-i18n="family.ter" aria-pressed="false">TER</button>
+      <button data-family="ic" data-i18n="family.ic" aria-pressed="false">Intercités</button>
+    </div>
+    <ul id="suggestList" class="suggest-list" role="listbox" aria-label="Résultats"></ul>
+    <p id="searchHint" class="hint"></p>
+  </section>
+
+</main>
+
+<nav class="tabbar" role="tablist" aria-label="Navigation">
+  <button class="tab active" data-view="watch" role="tab" aria-selected="true">
+    <span class="ic" aria-hidden="true">★</span><span data-i18n="tab.watch">Mes trains</span>
+  </button>
+  <button class="tab" data-view="search" role="tab" aria-selected="false">
+    <span class="ic" aria-hidden="true">🔍</span><span data-i18n="tab.search">Recherche</span>
+  </button>
+</nav>
+
+<!-- ============ MODALE TRAIN ============ -->
+<div id="modal" class="modal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-grip" data-close aria-hidden="true"></div>
+    <button class="modal-close" data-close data-i18n-aria="modal.close" aria-label="Fermer">✕</button>
+
+    <div id="modalHead" class="m-head"></div>
+
+    <div class="m-tabs" role="tablist" aria-label="Détail du train">
+      <button data-mtab="apercu" data-i18n="mtab.overview" role="tab" aria-selected="true" class="active">Aperçu</button>
+      <button data-mtab="trajet" data-i18n="mtab.journey" role="tab" aria-selected="false">Trajet</button>
+      <button data-mtab="carte" data-i18n="mtab.map" role="tab" aria-selected="false">Carte</button>
+      <button data-mtab="journal" data-i18n="mtab.journal" role="tab" aria-selected="false">Journal</button>
+    </div>
+
+    <div id="mpanel-apercu" class="m-panel active"></div>
+    <div id="mpanel-journal" class="m-panel"></div>
+    <div id="mpanel-trajet" class="m-panel"></div>
+
+    <div id="mpanel-carte" class="m-panel">
+      <div id="map"></div>
+      <div class="map-foot">
+        <div class="map-modes" role="group" aria-label="Cadrage">
+          <button data-mapmode="train" data-i18n="map.onTrain" class="active" aria-pressed="true">🚆 Sur le train</button>
+          <button data-mapmode="route" data-i18n="map.wholeRoute" aria-pressed="false">🧭 Tout le trajet</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="followLock" checked> <span data-i18n="map.follow">Suivre</span></label>
+      </div>
+      <p class="disclaimer" id="mapDisclaimer"></p>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="/app.js" type="module"></script>
+</body>
+</html>

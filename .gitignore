@@ -1,0 +1,8 @@
+node_modules/
+data/
+.env
+.env.local
+*.log
+
+# Personal drafts: the SIRI access request carries name and e-mail.
+docs/demande-acces-siri-et.md
