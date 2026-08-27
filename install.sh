@@ -27,50 +27,72 @@ GH_REPO="${GH_REPO:-nebuloss/traincon}"
 TARBALL="${TARBALL:-}"              # install this archive instead of a release
 SNCF_API_KEY="${SNCF_API_KEY:-}"    # optional
 FETCH_GEO="${FETCH_GEO:-1}"         # 0 to skip the 19 MB rail geometry
+BOOT_TIMEOUT="${BOOT_TIMEOUT:-180}" # seconds to wait for the first response
+
+QUIET="${QUIET:-0}"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 info()  { printf "${GREEN}[+]${NC} %s\n" "$*"; }
 warn()  { printf "${YELLOW}[!]${NC} %s\n" "$*"; }
 error() { printf "${RED}[x]${NC} %s\n" "$*"; exit 1; }
+# Same message, but lets the caller decide whether to abort.
+error_soft() { printf "${RED}[x]${NC} %s\n" "$*"; }
 
 # ── Steps ────────────────────────────────────────────────────────────────────
 
 check_host() {
-  [ "$(id -u)" -eq 0 ] || error "a lancer en root"
+  [ "$(id -u)" -eq 0 ] || error "must be run as root"
 
   if   [ -f /etc/alpine-release ]; then OS=alpine
   elif [ -f /etc/debian_version ]; then OS=debian
-  else error "systeme non supporte"; fi
-  info "Systeme detecte : $OS"
+  else error "unsupported system (needs Alpine or Debian/Ubuntu)"; fi
+  info "System detected: $OS"
+}
 
-  # The static GTFS is a zip and the geometry is fetched over HTTPS.
-  for c in curl unzip; do
-    command -v "$c" >/dev/null 2>&1 || NEED_PKGS="${NEED_PKGS:-} $c"
+# Which of the tools we need are actually missing.
+missing_tools() {
+  out=""
+  for c in curl tar unzip; do
+    command -v "$c" >/dev/null 2>&1 || out="$out $c"
   done
+  printf '%s' "$out"
 }
 
 install_deps() {
-  case "$OS" in
-    alpine) apk update -q
-            apk add --no-cache curl ca-certificates tar unzip >/dev/null ;;
-    debian) export DEBIAN_FRONTEND=noninteractive
-            apt-get update -qq
-            apt-get install -y -qq curl ca-certificates tar unzip >/dev/null ;;
-  esac
+  missing="$(missing_tools)"
+
+  if [ -n "$missing" ]; then
+    info "Installing:$missing"
+    # Errors are shown, not swallowed. A pre-existing broken package elsewhere
+    # on the system must not abort an install that may need nothing from apt.
+    case "$OS" in
+      alpine) apk update -q >/dev/null 2>&1 || true
+              apk add --no-cache ca-certificates $missing || warn "apk reported an error" ;;
+      debian) export DEBIAN_FRONTEND=noninteractive
+              apt-get update -qq >/dev/null 2>&1 || true
+              apt-get install -y -qq ca-certificates $missing || warn "apt reported an error" ;;
+    esac
+    still="$(missing_tools)"
+    [ -n "$still" ] && error "still missing after install:$still"
+  else
+    info "Required tools already present"
+  fi
 
   if command -v node >/dev/null 2>&1 &&
      [ "$(node -v | sed 's/v\([0-9]*\).*/\1/')" -ge 20 ] 2>/dev/null; then
-    info "Node deja present : $(node -v)"
+    info "Node already present: $(node -v)"
     return
   fi
 
-  info "Installation de Node ${NODE_VERSION}"
+  info "Installing Node ${NODE_VERSION}"
   case "$OS" in
-    alpine) apk add --no-cache nodejs npm >/dev/null ;;
-    debian) curl -fsSL "https://deb.nodesource.com/setup_${NODE_VERSION}.x" | bash - >/dev/null 2>&1
-            apt-get install -y -qq nodejs >/dev/null ;;
+    alpine) apk add --no-cache nodejs npm || warn "apk reported an error" ;;
+    debian) curl -fsSL "https://deb.nodesource.com/setup_${NODE_VERSION}.x" | bash - >/dev/null 2>&1 ||
+              warn "NodeSource setup failed, trying the distribution package"
+            apt-get install -y -qq nodejs || warn "apt reported an error" ;;
   esac
-  command -v node >/dev/null 2>&1 || error "installation de Node echouee"
+  command -v node >/dev/null 2>&1 || error "Node installation failed"
+  info "Node installed: $(node -v)"
 }
 
 fetch_app() {
@@ -85,12 +107,12 @@ fetch_app() {
   tmp="$(mktemp -d)"
 
   if [ -n "$TARBALL" ]; then
-    info "Installation depuis $TARBALL"
+    info "Installing from $TARBALL"
     tar -xzf "$TARBALL" -C "$tmp"
   else
-    info "Telechargement de la derniere version de $GH_REPO"
+    info "Downloading the latest release of $GH_REPO"
     url="https://github.com/${GH_REPO}/releases/latest/download/traincon.tar.gz"
-    curl -fsSL "$url" -o "$tmp/app.tar.gz" || error "telechargement impossible : $url"
+    curl -fsSL "$url" -o "$tmp/app.tar.gz" || error "download failed: $url"
     tar -xzf "$tmp/app.tar.gz" -C "$tmp"
   fi
 
@@ -102,26 +124,26 @@ fetch_app() {
   rm -rf "$tmp"
 
   cd "$APP_DIR"
-  info "Installation des dependances"
+  info "Installing dependencies"
   npm ci --omit=dev --no-audit --no-fund >/dev/null 2>&1 ||
     npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1 ||
-    error "npm install echoue"
+    error "npm install failed"
 }
 
 fetch_geo() {
-  [ "$FETCH_GEO" = "1" ] || { warn "geometrie ferroviaire ignoree (FETCH_GEO=0)"; return; }
+  [ "$FETCH_GEO" = "1" ] || { warn "skipping rail geometry (FETCH_GEO=0)"; return; }
   if [ -f "$APP_DIR/data/geo/rfn.geojson" ]; then
-    info "Geometrie ferroviaire deja presente"
+    info "Rail geometry already present"
     return
   fi
-  info "Telechargement de la geometrie ferroviaire (~19 Mo, une fois)"
+  info "Downloading rail geometry (~19 MB, once)"
   sh "$APP_DIR/scripts/fetch-geo.sh" >/dev/null 2>&1 ||
-    warn "geometrie indisponible : les positions retomberont sur des lignes droites"
+    warn "geometry unavailable: positions will fall back to straight lines"
 }
 
 make_user() {
   if id "$SERVICE_USER" >/dev/null 2>&1; then return; fi
-  info "Creation de l'utilisateur $SERVICE_USER"
+  info "Creating user $SERVICE_USER"
   case "$OS" in
     alpine) adduser -S -D -H -s /sbin/nologin "$SERVICE_USER" >/dev/null 2>&1 || true ;;
     debian) useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER" >/dev/null 2>&1 || true ;;
@@ -139,7 +161,7 @@ write_env() {
   } > "$APP_DIR/.env"
   chown root:root "$APP_DIR/.env"
   chmod 600 "$APP_DIR/.env"
-  [ -n "$SNCF_API_KEY" ] && info "Cle API SNCF enregistree dans $APP_DIR/.env"
+  [ -n "$SNCF_API_KEY" ] && info "SNCF API key stored in $APP_DIR/.env"
   umask 022
 }
 
@@ -152,11 +174,11 @@ fix_perms() {
 }
 
 install_service_openrc() {
-  info "Installation du service OpenRC"
+  info "Installing the OpenRC service"
   cat > "/etc/init.d/$SERVICE_NAME" <<EOF
 #!/sbin/openrc-run
 name="$SERVICE_NAME"
-description="Traincon — suivi des trains SNCF en temps reel"
+description="Traincon - live SNCF train tracking"
 command="$(command -v node)"
 command_args="$APP_DIR/src/server.js"
 command_user="$SERVICE_USER"
@@ -180,10 +202,10 @@ EOF
 }
 
 install_service_systemd() {
-  info "Installation du service systemd"
+  info "Installing the systemd service"
   cat > "/etc/systemd/system/$SERVICE_NAME.service" <<EOF
 [Unit]
-Description=Traincon — suivi des trains SNCF en temps reel
+Description=Traincon - live SNCF train tracking
 Documentation=https://github.com/$GH_REPO
 After=network-online.target
 Wants=network-online.target
@@ -212,23 +234,52 @@ EOF
   systemctl restart "$SERVICE_NAME"
 }
 
+service_alive() {
+  case "$OS" in
+    alpine) rc-service "$SERVICE_NAME" status >/dev/null 2>&1 ;;
+    debian) systemctl is-active --quiet "$SERVICE_NAME" ;;
+  esac
+}
+
+show_logs() {
+  printf '\n'
+  warn "last log lines:"
+  case "$OS" in
+    alpine) tail -25 "/var/log/$SERVICE_NAME.log" 2>/dev/null || true ;;
+    debian) journalctl -u "$SERVICE_NAME" -n 25 --no-pager 2>/dev/null || true ;;
+  esac
+}
+
 wait_ready() {
-  info "Demarrage"
+  # First boot downloads the 4 MB GTFS and parses it, so it is legitimately
+  # slower than later starts. Print progress rather than sitting silent, and
+  # stop early if the service has died instead of waiting out the timeout.
+  info "Starting the service (first boot downloads the timetable, ~1-2 min)"
   i=0
-  while [ "$i" -lt 90 ]; do
+  while [ "$i" -lt "$BOOT_TIMEOUT" ]; do
     if curl -fsS -m 2 "http://127.0.0.1:$APP_PORT/api/stats" >/dev/null 2>&1; then
       total=$(curl -fsS -m 5 "http://127.0.0.1:$APP_PORT/api/stats" 2>/dev/null |
               sed -n 's/.*"total":\([0-9]*\).*/\1/p')
-      info "Pret — ${total:-0} trains suivis"
+      [ "$QUIET" = "1" ] || printf '\n'
+      info "Ready — tracking ${total:-0} trains"
       return 0
     fi
-    i=$((i + 1)); sleep 1
+
+    if [ "$i" -gt 5 ] && ! service_alive; then
+      [ "$QUIET" = "1" ] || printf '\n'
+      error_soft "the service stopped unexpectedly"
+      show_logs
+      return 1
+    fi
+
+    i=$((i + 1))
+    [ "$QUIET" = "1" ] || { [ $((i % 5)) -eq 0 ] && printf '.'; }
+    sleep 1
   done
-  warn "le service n'a pas repondu en 90 s"
-  case "$OS" in
-    alpine) tail -20 "/var/log/$SERVICE_NAME.log" 2>/dev/null || true ;;
-    debian) journalctl -u "$SERVICE_NAME" -n 20 --no-pager 2>/dev/null || true ;;
-  esac
+
+  [ "$QUIET" = "1" ] || printf '\n'
+  error_soft "no response on port $APP_PORT after ${BOOT_TIMEOUT}s"
+  show_logs
   return 1
 }
 
@@ -244,15 +295,20 @@ case "$OS" in
   alpine) install_service_openrc ;;
   debian) install_service_systemd ;;
 esac
-wait_ready || true
+if wait_ready; then READY=1; else READY=0; fi
 
 ip=$(hostname -I 2>/dev/null | awk '{print $1}')
 printf '\n'
-info "Traincon installe dans $APP_DIR"
-info "Interface : http://${ip:-127.0.0.1}:$APP_PORT"
+info "Traincon installed in $APP_DIR"
+info "Web interface: http://${ip:-127.0.0.1}:$APP_PORT"
 [ -z "$SNCF_API_KEY" ] &&
-  warn "sans SNCF_API_KEY : pas de motifs de perturbation (le suivi fonctionne quand meme)"
+  warn "no SNCF_API_KEY: disruption reasons unavailable (tracking works regardless)"
 case "$OS" in
-  alpine) printf '    logs : tail -f /var/log/%s.log\n' "$SERVICE_NAME" ;;
-  debian) printf '    logs : journalctl -u %s -f\n' "$SERVICE_NAME" ;;
+  alpine) printf '    logs:    tail -f /var/log/%s.log\n' "$SERVICE_NAME"
+          printf '    restart: rc-service %s restart\n' "$SERVICE_NAME" ;;
+  debian) printf '    logs:    journalctl -u %s -f\n' "$SERVICE_NAME"
+          printf '    restart: systemctl restart %s\n' "$SERVICE_NAME" ;;
 esac
+
+# A non-zero exit matters when this is piped into a provisioning tool.
+[ "$READY" = "1" ] || exit 1
