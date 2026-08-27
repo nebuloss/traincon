@@ -3,10 +3,10 @@
 // Design rule: times shown big are SNCF's own live forecast (hard data).
 // Positions are derived and always labelled as estimates.
 
-import { t, setLang, getLang, detectLang, intlLocale, LOCALES } from './i18n.js';
-
-// Alias for scopes where a local `t` holds a train object.
-const tr = t;
+// Imported as `tr`, never `t`: `t` is a train throughout this file, and a
+// translator called `t` silently became the train inside ten different
+// scopes — every one of them a "t is not a function" at runtime.
+import { t as tr, setLang, getLang, detectLang, intlLocale, LOCALES } from './i18n.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -53,8 +53,8 @@ function applyStaticI18n() {
   for (const el of $$('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder);
   for (const el of $$('[data-i18n-aria]')) el.setAttribute('aria-label', t(el.dataset.i18nAria));
   const d = $('#mapDisclaimer');
-  if (d) d.innerHTML = t('map.disclaimer');   // this one carries <strong>
-  document.title = t('app.title');
+  if (d) d.innerHTML = tr('map.disclaimer');   // this one carries <strong>
+  document.title = tr('app.title');
 }
 
 function applyLang(lang) {
@@ -204,24 +204,24 @@ function delayClass(sec, cancelled) {
 /** "+45 min" under the hour, "+1 h 10" over it — as SNCF writes it. */
 function delayText(sec) {
   const m = Math.round(sec / 60);
-  if (m === 0) return t('delay.onTime');
+  if (m === 0) return tr('delay.onTime');
   const sign = m > 0 ? '+' : '−';
   const a = Math.abs(m);
-  if (a < 60) return t('delay.minutes', { sign, n: a });
+  if (a < 60) return tr('delay.minutes', { sign, n: a });
   const h = Math.floor(a / 60), r = a % 60;
   return r === 0
-    ? t('delay.hours', { sign, h })
-    : t('delay.hoursMinutes', { sign, h, m: String(r).padStart(2, '0') });
+    ? tr('delay.hours', { sign, h })
+    : tr('delay.hoursMinutes', { sign, h, m: String(r).padStart(2, '0') });
 }
 
 function countdown(ts) {
   const s = ts - Math.floor(Date.now() / 1000);
-  if (s < -60) return t('countdown.gone');
-  if (s < 0) return t('countdown.now');
+  if (s < -60) return tr('countdown.gone');
+  if (s < 0) return tr('countdown.now');
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
   return h > 0
-    ? t('countdown.hours', { h, m: String(m).padStart(2, '0') })
-    : t('countdown.minutes', { m });
+    ? tr('countdown.hours', { h, m: String(m).padStart(2, '0') })
+    : tr('countdown.minutes', { m });
 }
 
 const trendText = (k) => t(`trend.${k}`);
@@ -257,9 +257,9 @@ function observationLine(t) {
   const leg = o.legSec ? Math.round(o.legSec / 60) : null;
   return jlRow(
     esc(c.label),
-    `${esc(t('jl.seenAtTxt', { stop: `<strong>${esc(o.lastStop)}</strong>` }))} ${esc(c.txt)}`
+    `${esc(tr('jl.seenAtTxt', { stop: `<strong>${esc(o.lastStop)}</strong>` }))} ${esc(c.txt)}`
       .replace('&lt;strong&gt;', '<strong>').replace('&lt;/strong&gt;', '</strong>'),
-    esc(t('jl.ago', { n: mins })) + (leg ? ` / ${leg}` : ''),
+    esc(tr('jl.ago', { n: mins })) + (leg ? ` / ${leg}` : ''),
     c.cls === 'ok' ? 'ok' : c.cls === 'bad' ? 'bad' : 'warn');
 }
 
@@ -284,51 +284,51 @@ function toast(msg) {
 function statusSentence(train) {
   const p = train.position;
   if (train.cancelled) {
-    return { main: t('status.cancelled'), sub: t('status.cancelledSub'), icon: '✕' };
+    return { main: tr('status.cancelled'), sub: tr('status.cancelledSub'), icon: '✕' };
   }
   switch (p.basis) {
     case 'not_departed':
       return {
-        main: t('status.inStation', { stop: p.atStation }),
-        sub: t('status.notDeparted', { time: hhmm(train.calls[0].time) }),
+        main: tr('status.inStation', { stop: p.atStation }),
+        sub: tr('status.notDeparted', { time: hhmm(train.calls[0].time) }),
         icon: '🅿',
       };
     case 'at_station':
       return {
-        main: t('status.inStation', { stop: p.atStation }),
+        main: tr('status.inStation', { stop: p.atStation }),
         sub: train.next
-          ? t('status.leavesFor', { stop: p.nextStop, time: hhmm(train.next.time) })
-          : t('status.atPlatform'),
+          ? tr('status.leavesFor', { stop: p.nextStop, time: hhmm(train.next.time) })
+          : tr('status.atPlatform'),
         icon: '🛑',
       };
     case 'arrived':
       return {
-        main: t('status.arrived', { stop: p.atStation }),
-        sub: t('status.journeyOver'), icon: '🏁',
+        main: tr('status.arrived', { stop: p.atStation }),
+        sub: tr('status.journeyOver'), icon: '🏁',
       };
     case 'between': {
-      const bits = [t('status.legProgress', { pct: Math.round((p.legProgress ?? 0) * 100) })];
-      if (p.legKm) bits.push(t('status.legKm', { km: p.legKm }));
-      if (p.speedKmh) bits.push(t('status.speed', { kmh: p.speedKmh }));
+      const bits = [tr('status.legProgress', { pct: Math.round((p.legProgress ?? 0) * 100) })];
+      if (p.legKm) bits.push(tr('status.legKm', { km: p.legKm }));
+      if (p.speedKmh) bits.push(tr('status.speed', { kmh: p.speedKmh }));
       return {
-        main: t('status.between', { from: p.fromStop, to: p.nextStop }),
+        main: tr('status.between', { from: p.fromStop, to: p.nextStop }),
         sub: bits.join(' · '), icon: '🚆',
       };
     }
     default:
-      return { main: t('status.unknown'), sub: '', icon: '❓' };
+      return { main: tr('status.unknown'), sub: '', icon: '❓' };
   }
 }
 
 function posText(p) {
-  if (!p) return t('pos.unknown');
-  if (p.basis === 'not_departed') return t('pos.notDeparted', { stop: esc(p.atStation) });
-  if (p.basis === 'arrived') return t('pos.arrived', { stop: esc(p.atStation) });
-  if (p.basis === 'at_station') return t('pos.inStation', { stop: esc(p.atStation) });
+  if (!p) return tr('pos.unknown');
+  if (p.basis === 'not_departed') return tr('pos.notDeparted', { stop: esc(p.atStation) });
+  if (p.basis === 'arrived') return tr('pos.arrived', { stop: esc(p.atStation) });
+  if (p.basis === 'at_station') return tr('pos.inStation', { stop: esc(p.atStation) });
   if (p.basis === 'between')
-    return t('pos.between', { from: esc(p.fromStop), to: esc(p.nextStop),
+    return tr('pos.between', { from: esc(p.fromStop), to: esc(p.nextStop),
       pct: Math.round(p.legProgress * 100), km: p.legKm });
-  return t('pos.unknown');
+  return tr('pos.unknown');
 }
 
 /**
@@ -390,10 +390,10 @@ function journeyTimeline(t) {
       <span class="tl-times">
         <span class="tl-eta ${dcls}">${c.skipped ? '—' : hhmm(shown)}</span>
         <span class="tl-meta">${
-          c.skipped ? esc(t('delay.cancelled'))
+          c.skipped ? esc(tr('delay.cancelled'))
           : [
-              dwell ? t('stop.departure', { time: hhmm(dwell) }) : '',
-              c.delay >= 60 ? `<b class="${dcls}">${delayText(c.delay)}</b>` : esc(t('delay.onTime')),
+              dwell ? tr('stop.departure', { time: hhmm(dwell) }) : '',
+              c.delay >= 60 ? `<b class="${dcls}">${delayText(c.delay)}</b>` : esc(tr('delay.onTime')),
             ].filter(Boolean).join(' · ')}</span>
       </span>
     </li>`);
@@ -463,14 +463,14 @@ function focusBlock(t) {
   const cls = delayClass(target.delay, t.cancelled);
   const gone = target.time < Math.floor(Date.now() / 1000);
   return `<div class="focus">
-    <div class="label">${esc(t('card.nextStop', { stop: target.name }))}</div>
+    <div class="label">${esc(tr('card.nextStop', { stop: target.name }))}</div>
     <div class="time-row">
       <span class="live-time ${cls}">${t.cancelled ? '—' : hhmm(target.time)}</span>
       ${target.delay >= 60 ? `<span class="planned-time">${hhmm(planned)}</span>` : ''}
-      <span class="${cls}">${t.cancelled ? esc(t('delay.cancelled')) : delayText(target.delay)}</span>
+      <span class="${cls}">${t.cancelled ? esc(tr('delay.cancelled')) : delayText(target.delay)}</span>
     </div>
     <div class="countdown" data-cd="${target.time}">
-      ${t.cancelled ? esc(t('card.cancelledWarning')) : (gone ? esc(t('card.alreadyPassed')) : `<strong>${countdown(target.time)}</strong>`)}
+      ${t.cancelled ? esc(tr('card.cancelledWarning')) : (gone ? esc(tr('card.alreadyPassed')) : `<strong>${countdown(target.time)}</strong>`)}
     </div>
   </div>`;
 }
@@ -495,7 +495,7 @@ function trainCard(t, bookmarked = null) {
       <span class="badge ${t.family}">${esc(t.serviceLabel)}</span>
       <span class="cd-num">${esc(labelOf(t))}</span>
       ${t.coupledWith?.length ? '<span class="um-tag">UM</span>' : ''}
-      <span class="cd-delay ${cls}">${t.cancelled ? esc(t('delay.cancelled')).toUpperCase() : delayText(t.delay)}</span>
+      <span class="cd-delay ${cls}">${t.cancelled ? esc(tr('delay.cancelled')).toUpperCase() : delayText(t.delay)}</span>
     </div>
     <div class="cd-od">${esc(t.origin)} → ${esc(t.destination)}</div>
     ${miniProgress(t)}
@@ -507,7 +507,7 @@ function trainCard(t, bookmarked = null) {
         </span>` : ''}
     </div>
     ${lastLeg ? '' : `<div class="cd-arr">
-      ${esc(t('card.arrival', { stop: terminus.name }))} · <b class="${delayClass(terminus.delay, t.cancelled)}">${hhmm(terminus.arrival ?? terminus.time)}</b>
+      ${esc(tr('card.arrival', { stop: terminus.name }))} · <b class="${delayClass(terminus.delay, t.cancelled)}">${hhmm(terminus.arrival ?? terminus.time)}</b>
     </div>`}`;
   return el;
 }
@@ -519,7 +519,7 @@ async function openTrain(number, tab = 'apercu') {
   state.mapPathFor = null;
   $('#modal').hidden = false;
   document.body.style.overflow = 'hidden';
-  $('#modalHead').innerHTML = `<p class="hint">${esc(t('modal.loading'))}</p>`;
+  $('#modalHead').innerHTML = `<p class="hint">${esc(tr('modal.loading'))}</p>`;
   setModalTab(tab);
   await refreshModal();
 }
@@ -541,7 +541,7 @@ async function refreshModal() {
   if (!d.found) {
     $('#modalHead').innerHTML = `
       <div class="m-title" id="modalTitle">${starBtn(num)}<span>${esc(num)}</span></div>
-      <div class="m-od">${esc(d.message ?? t('map.absent'))}</div>
+      <div class="m-od">${esc(d.message ?? tr('map.absent'))}</div>
       ${d.knownSchedule?.line ? `<div class="m-line">${esc(d.knownSchedule.line)}</div>` : ''}`;
     $('#mpanel-apercu').innerHTML = '';
     $('#mpanel-trajet').innerHTML = '';
@@ -558,7 +558,7 @@ async function refreshModal() {
       <span class="badge ${t.family}">${esc(t.serviceLabel)}</span>
       <span>${esc(group.join(' + '))}</span>
       ${group.length > 1 ? '<span class="um-tag">UM</span>' : ''}
-      <span class="${cls} m-delay">${t.cancelled ? esc(t('delay.cancelled')).toUpperCase() : delayText(t.delay)}</span>
+      <span class="${cls} m-delay">${t.cancelled ? esc(tr('delay.cancelled')).toUpperCase() : delayText(t.delay)}</span>
     </div>
     <div class="m-od">${esc(t.origin)} → ${esc(t.destination)}</div>`;
 
@@ -577,22 +577,22 @@ async function refreshModal() {
     ${focusBlock(t)}
     <div class="ov-grid">
       <div class="ov-cell">
-        <span class="ov-k">${esc(t('ov.terminus'))}</span>
+        <span class="ov-k">${esc(tr('ov.terminus'))}</span>
         <span class="ov-v">${esc(terminus.name)}</span>
         <span class="ov-s ${delayClass(terminus.delay, t.cancelled)}">${hhmm(terminus.arrival ?? terminus.time)}</span>
       </div>
       <div class="ov-cell">
-        <span class="ov-k">${esc(t('ov.delay'))}</span>
+        <span class="ov-k">${esc(tr('ov.delay'))}</span>
         <span class="ov-v ${cls}">${t.cancelled ? 'supprimé' : delayText(t.delay)}</span>
         <span class="ov-s trend ${t.trend}">${trendText(t.trend)}</span>
       </div>
       <div class="ov-cell">
-        <span class="ov-k">${esc(t('ov.stopsLeft'))}</span>
+        <span class="ov-k">${esc(tr('ov.stopsLeft'))}</span>
         <span class="ov-v">${remaining}</span>
-        <span class="ov-s">${esc(t('ov.outOf', { n: t.calls.length }))}</span>
+        <span class="ov-s">${esc(tr('ov.outOf', { n: t.calls.length }))}</span>
       </div>
       <div class="ov-cell">
-        <span class="ov-k">${esc(t('ov.speed'))}</span>
+        <span class="ov-k">${esc(tr('ov.speed'))}</span>
         <span class="ov-v">${t.position.speedKmh ? t.position.speedKmh + ' km/h' : '—'}</span>
         <span class="ov-s">${esc(t.serviceLabel)}</span>
       </div>
@@ -600,7 +600,7 @@ async function refreshModal() {
     <div class="m-actions">
       <button data-act="togglewatch" data-num="${esc(group.join(','))}"
               class="${isWatched(t.number) ? 'danger' : 'accent'}">
-        ${esc(isWatched(t.number) ? t('ov.removeFav') : t('ov.addFav'))}
+        ${esc(isWatched(t.number) ? tr('ov.removeFav') : tr('ov.addFav'))}
       </button>
     </div>`;
 
@@ -616,13 +616,13 @@ async function refreshModal() {
     jlRow(esc(conf.label), esc(conf.txt), '',
       conf.cls === 'ok' ? 'ok' : conf.cls === 'bad' ? 'bad' : 'warn'),
     o.lastStop
-      ? jlRow(esc(t('jl.seenAt')),
-          esc(t('jl.seenAtTxt', { stop: '\u0001' })).replace('\u0001', `<strong>${esc(o.lastStop)}</strong>`),
-          esc(t('jl.ago', { n: Math.round((o.ageSec ?? 0) / 60) })))
+      ? jlRow(esc(tr('jl.seenAt')),
+          esc(tr('jl.seenAtTxt', { stop: '\u0001' })).replace('\u0001', `<strong>${esc(o.lastStop)}</strong>`),
+          esc(tr('jl.ago', { n: Math.round((o.ageSec ?? 0) / 60) })))
       : '',
     t.reconciled?.disagreement
-      ? jlRow(esc(t('jl.twoNumbers')),
-          esc(t('jl.twoNumbersTxt', {
+      ? jlRow(esc(tr('jl.twoNumbers')),
+          esc(tr('jl.twoNumbersTxt', {
             count: t.reconciled.disagreement.length,
             list: '\u0001', shown: '\u0002',
           })).replace('\u0001', t.reconciled.disagreement
@@ -635,7 +635,7 @@ async function refreshModal() {
   const changes = hist.length > 1
     ? hist.map((h, k) => {
         const prev = hist[k + 1];
-        if (!prev) return jlRow(hhmm(h.t), esc(t('jl.firstReading', { delay: delayText(h.delay) })));
+        if (!prev) return jlRow(hhmm(h.t), esc(tr('jl.firstReading', { delay: delayText(h.delay) })));
         const diff = h.delay - prev.delay;
         if (diff === 0) return '';
         const better = diff < 0;
@@ -645,28 +645,28 @@ async function refreshModal() {
           })),
           '', better ? 'ok' : 'bad');
       }).filter(Boolean).join('')
-    : jlRow('—', esc(t('jl.noChange')));
+    : jlRow('—', esc(tr('jl.noChange')));
 
   const source = [
-    jlRow(esc(t('jl.schedules')),
-      esc(t('jl.schedulesTxt'))),
-    jlRow(esc(t('jl.pastStops')),
-      esc(t('jl.pastStopsTxt')), '', 'warn'),
-    jlRow(esc(t('jl.position')),
-      esc(t('jl.positionTxt', {
+    jlRow(esc(tr('jl.schedules')),
+      esc(tr('jl.schedulesTxt'))),
+    jlRow(esc(tr('jl.pastStops')),
+      esc(tr('jl.pastStopsTxt')), '', 'warn'),
+    jlRow(esc(tr('jl.position')),
+      esc(tr('jl.positionTxt', {
         kmh: t.position.speedKmh || 0,
         km: Math.max(1, Math.round((t.position.speedKmh || 0) / 60)),
       })), '', 'warn'),
     t.worstDelay - t.delay >= 300
-      ? jlRow(esc(t('jl.goodNews')),
-          esc(t('jl.goodNewsTxt', { worst: delayText(t.worstDelay), now: delayText(t.delay) })), '', 'ok')
+      ? jlRow(esc(tr('jl.goodNews')),
+          esc(tr('jl.goodNewsTxt', { worst: delayText(t.worstDelay), now: delayText(t.delay) })), '', 'ok')
       : '',
   ].filter(Boolean).join('');
 
   $('#mpanel-journal').innerHTML =
-    section(esc(t('jl.trustTitle')), trust) +
-    section(esc(t('jl.changesTitle')), changes) +
-    section(esc(t('jl.sourceTitle')), source);
+    section(esc(tr('jl.trustTitle')), trust) +
+    section(esc(tr('jl.changesTitle')), changes) +
+    section(esc(tr('jl.sourceTitle')), source);
 
   $('#mpanel-trajet').innerHTML = focusBlock(t) + journeyTimeline(t);
 
@@ -843,18 +843,18 @@ function notify(title, body) {
 
 async function askNotify() {
   try {
-    if (typeof Notification === 'undefined') return toast(t('alerts.unsupported'));
+    if (typeof Notification === 'undefined') return toast(tr('alerts.unsupported'));
     const p = await Notification.requestPermission();
-    toast(p === 'granted' ? t('alerts.granted') : t('alerts.denied'));
+    toast(p === 'granted' ? tr('alerts.granted') : tr('alerts.denied'));
     renderNotifyBtn();
-  } catch { toast(t('alerts.unavailable')); }
+  } catch { toast(tr('alerts.unavailable')); }
 }
 
 function renderNotifyBtn() {
   const b = $('#notifyBtn');
   if (!b) return;
   const granted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
-  b.textContent = granted ? t('alerts.enabled') : t('alerts.enable');
+  b.textContent = granted ? tr('alerts.enabled') : tr('alerts.enable');
   b.disabled = granted;
 }
 
@@ -865,7 +865,7 @@ async function renderWatch() {
   if (!state.watch.length) { wrap.innerHTML = ''; empty.style.display = ''; return; }
   empty.style.display = 'none';
   if (state.feedDown) {
-    wrap.innerHTML = `<p class="hint">${esc(t('watch.feedDown', { n: state.watch.length }))}</p>`;
+    wrap.innerHTML = `<p class="hint">${esc(tr('watch.feedDown', { n: state.watch.length }))}</p>`;
     return;
   }
 
@@ -917,23 +917,23 @@ async function renderSearch() {
   $('#searchInput').setAttribute('aria-expanded', String(Boolean(q)));
   if (!q) {
     box.innerHTML = '';
-    hint.textContent = t('search.prompt');
+    hint.textContent = tr('search.prompt');
     return;
   }
   const params = new URLSearchParams({ q, limit: '25' });
   if (state.family !== 'all') params.set('family', state.family);
   const list = await api('/api/suggest?' + params);
-  if (!Array.isArray(list)) throw new Error(t('error.badResponse'));
+  if (!Array.isArray(list)) throw new Error(tr('error.badResponse'));
   if (!list.length) {
     box.innerHTML = '';
     hint.textContent = state.feedDown
-      ? t('search.feedDown')
-      : t('search.none', { q });
+      ? tr('search.feedDown')
+      : tr('search.none', { q });
     return;
   }
   const cachedAt = cacheMeta.get('/api/suggest?' + params);
-  hint.textContent = t('search.results', { n: list.length })
-    + (cachedAt ? ` · ${t('search.cachedAt', { time: hhmm(Math.floor(cachedAt / 1000)) })}` : '');
+  hint.textContent = tr('search.results', { n: list.length })
+    + (cachedAt ? ` · ${tr('search.cachedAt', { time: hhmm(Math.floor(cachedAt / 1000)) })}` : '');
   box.innerHTML = list.map((r) => {
     const cls = delayClass(r.delay, r.cancelled);
     return `<li role="option" class="sg-row">
@@ -998,24 +998,24 @@ function renderBanner(s) {
   const localAt = servedFromCache();
   if (localAt) {
     kind = 'stale'; icon = '📦';
-    title = t('banner.offlineTitle');
-    sub = t('banner.offlineSub', { time: hhmm(Math.floor(localAt / 1000)) });
+    title = tr('banner.offlineTitle');
+    sub = tr('banner.offlineSub', { time: hhmm(Math.floor(localAt / 1000)) });
   } else if (s.replay) {
     kind = 'replay'; icon = '🧪';
-    title = t('banner.demoTitle');
-    sub = t('banner.demoSub', { n: s.total });
+    title = tr('banner.demoTitle');
+    sub = tr('banner.demoSub', { n: s.total });
   } else if (!s.total) {
     kind = 'down'; icon = '⚠';
-    title = t('banner.downTitle');
-    sub = t('banner.downSub');
+    title = tr('banner.downTitle');
+    sub = tr('banner.downSub');
   } else if (s.stale) {
     kind = 'stale'; icon = '⏸';
-    title = t('banner.downTitle');
-    sub = t('banner.frozenSub', { time: fmt(s.feedTs) });
+    title = tr('banner.downTitle');
+    sub = tr('banner.frozenSub', { time: fmt(s.feedTs) });
   } else if (s.ageSec != null && s.ageSec > 600) {
     kind = 'stale'; icon = '⏳';
-    title = t('banner.slowTitle');
-    sub = t('banner.slowSub', { n: Math.round(s.ageSec / 60), time: fmt(s.feedTs) });
+    title = tr('banner.slowTitle');
+    sub = tr('banner.slowSub', { n: Math.round(s.ageSec / 60), time: fmt(s.feedTs) });
   }
 
   if (!kind) { el.hidden = true; el.innerHTML = ''; return; }
@@ -1023,7 +1023,7 @@ function renderBanner(s) {
   el.className = 'banner ' + kind;
   el.innerHTML = `<span class="b-ic" aria-hidden="true">${icon}</span>
     <span class="b-txt"><strong>${esc(title)}</strong><span class="b-sub">${esc(sub)}</span></span>
-    ${kind === 'replay' ? '' : `<button id="retryBtn">${esc(t('banner.retry'))}</button>`}`;
+    ${kind === 'replay' ? '' : `<button id="retryBtn">${esc(tr('banner.retry'))}</button>`}`;
 }
 
 /**
@@ -1047,12 +1047,12 @@ async function renderFeedState() {
     const live = age != null && age < 240 && !s.stale;
     $('#feedDot').className = 'dot ' + (live ? 'live' : (s.total ? 'stale' : ''));
     $('#feedAge').textContent = age == null
-      ? t('banner.downTitle')
-      : `${s.total} · ${s.stale ? t('app.localData') : (age < 90 ? t('app.live') : t('app.minutesAgo', { n: Math.round(age / 60) }))}`;
+      ? tr('banner.downTitle')
+      : `${s.total} · ${s.stale ? tr('app.localData') : (age < 90 ? tr('app.live') : tr('app.minutesAgo', { n: Math.round(age / 60) }))}`;
   } catch {
     $('#feedDot').className = 'dot';
     const localAt = servedFromCache();
-    $('#feedAge').textContent = localAt ? t('app.localData') : t('app.offline');
+    $('#feedAge').textContent = localAt ? tr('app.localData') : tr('app.offline');
     renderBanner({ total: 0, ageSec: null, stale: false, replay: false });
     state.feedDown = !localAt;
   }
@@ -1122,7 +1122,7 @@ $('#searchInput').addEventListener('input', (e) => {
   sugTimer = setTimeout(() => {
     renderSearch().catch((err) => {
       // A silent catch here looks exactly like "autocomplete is broken".
-      $('#searchHint').textContent = t('search.failed', { error: err.message });
+      $('#searchHint').textContent = tr('search.failed', { error: err.message });
       console.error('renderSearch', err);
     });
   }, 180);
@@ -1143,11 +1143,11 @@ $('#notifyBtn').addEventListener('click', askNotify);
 document.addEventListener('click', async (e) => {
   if (!e.target.closest('#retryBtn')) return;
   const b = e.target.closest('#retryBtn');
-  b.disabled = true; b.textContent = t('banner.retrying');
+  b.disabled = true; b.textContent = tr('banner.retrying');
   try {
     const s = await api('/api/refresh');
     toast(s.total ? tr('banner.restored', { n: s.total }) : tr('banner.stillDown'));
-  } catch { toast(t('banner.stillDown')); }
+  } catch { toast(tr('banner.stillDown')); }
   renderCurrent();
 });
 
@@ -1160,7 +1160,7 @@ const isWatched = (n) => state.watch.includes(String(n));
  */
 function toggleWatch(spec) {
   const nums = String(spec).split(',').map((n) => n.trim()).filter(Boolean);
-  if (!nums.length || nums.some((n) => !/^\d{1,6}$/.test(n))) return toast(t('fav.invalid'));
+  if (!nums.length || nums.some((n) => !/^\d{1,6}$/.test(n))) return toast(tr('fav.invalid'));
   const on = nums.some((n) => isWatched(n));
   if (on) {
     state.watch = state.watch.filter((n) => !nums.includes(n));
@@ -1333,7 +1333,7 @@ setInterval(() => {
 
 applyLang(load('lang', null) ?? detectLang());
 applyTheme(themeMode());
-renderSearch().catch((e) => { $('#searchHint').textContent = t('search.failed', { error: e.message }); });
+renderSearch().catch((e) => { $('#searchHint').textContent = tr('search.failed', { error: e.message }); });
 renderCurrent();
 primeCache().catch(() => { /* best effort */ });
 setInterval(() => {

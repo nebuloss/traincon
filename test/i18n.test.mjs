@@ -40,8 +40,7 @@ test('locales define the same keys', () => {
 
 test('every key referenced by the app exists', () => {
   const used = new Set();
-  // t('key') and the tr() alias used where a local `t` holds a train
-  for (const m of app.matchAll(/\btr?\('([a-zA-Z][\w.]+)'/g)) used.add(m[1]);
+  for (const m of app.matchAll(/\btr\('([a-zA-Z][\w.]+)'/g)) used.add(m[1]);
   // data-i18n, data-i18n-placeholder, data-i18n-aria in the markup
   for (const m of html.matchAll(/data-i18n(?:-placeholder|-aria)?="([\w.]+)"/g)) used.add(m[1]);
 
@@ -69,4 +68,30 @@ test('no stray French left in the interface source', () => {
     .map((m) => m[1])
     .filter((v) => v.length > 12);
   assert.deepEqual(suspects, [], 'untranslated literals');
+});
+
+test('the translator is never called `t`', () => {
+  // `t` is a train throughout app.js. Importing the translator under the same
+  // name made it resolve to the train inside every function that binds one —
+  // a "t is not a function" that no amount of key checking would reveal,
+  // because the keys were all perfectly valid.
+  const calls = [...app.matchAll(/(?<![\w.$])t\('([\w.]+)'/g)].map((m) => m[1]);
+  assert.deepEqual(calls, [], "translate calls must use tr(), not t()");
+
+  assert.ok(/import \{ t as tr[,}]/.test(app),
+    'the translator must be imported as tr, so the name cannot collide');
+  assert.ok(!/^const tr = t;/m.test(app),
+    'no aliasing: importing as tr removes the collision at the source');
+});
+
+test('every locale value is a string', () => {
+  // A stray object or function would render as [object Object] rather than
+  // failing loudly.
+  for (const name of ['FR', 'EN']) {
+    const body = blockOf(name);
+    const bad = [...body.matchAll(/^\s*'([^']+)':\s*([^\n]*)/gm)]
+      .filter(([, , v]) => !/^["'`]/.test(v.trim()))
+      .map(([, k]) => k);
+    assert.deepEqual(bad, [], `${name}: non-string values`);
+  }
 });
