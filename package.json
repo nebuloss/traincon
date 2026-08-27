@@ -5,13 +5,15 @@
   "main": "index.js",
   "scripts": {
     "test": "node --max-old-space-size=3072 --test test/*.test.mjs",
-    "start": "node src/server.js",
-    "onboard": "node src/onboard.mjs",
+    "start": "node dist-server/server/index.js",
+    "onboard": "node tools/onboard.mjs",
     "fetch:geo": "bash scripts/fetch-geo.sh",
-    "compare": "node --max-old-space-size=3072 src/compare.mjs",
-    "logger": "node src/logger.mjs",
-    "dev:replay": "SNCF_FEED_FILE=fixtures/sncf-trip-updates.pb node --max-old-space-size=3072 src/server.js",
-    "sources": "node --max-old-space-size=3072 src/compare-sources.mjs"
+    "logger": "node tools/logger.mjs",
+    "dev:replay": "SNCF_FEED_FILE=fixtures/sncf-trip-updates.pb node dist-server/server/index.js",
+    "sources": "node --max-old-space-size=3072 tools/compare-sources.mjs",
+    "dev": "vite",
+    "build": "tsc -p tsconfig.server.json && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit"
   },
   "keywords": [],
   "author": "",

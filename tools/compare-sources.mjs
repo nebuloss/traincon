@@ -7,8 +7,8 @@
 //
 //   SNCF_API_KEY=xxx node src/compare-sources.mjs 8540 "Bordeaux"
 
-import { loadStatic } from './gtfs.js';
-import { loadTrains } from './realtime.js';
+import { GtfsStatic } from '../dist-server/server/GtfsStatic.js';
+import { FeedClient } from '../dist-server/server/FeedClient.js';
 import { hasKey, departures, ping } from './navitia.js';
 
 const num = process.argv[2];
@@ -21,8 +21,8 @@ const H = (ts) => (ts ? new Date(ts * 1000)
 console.log(`\n=== Train ${num} — comparaison des sources ===\n`);
 
 // ---- 1. GTFS-RT (what the app uses today) ----
-const statics = await loadStatic('data');
-const { trains, feedTs } = await loadTrains(statics);
+const statics = await GtfsStatic.load('data');
+const { trains, feedTs } = await new FeedClient().load(statics);
 const t = trains.find((x) => x.number === num);
 console.log(`GTFS-RT (proxy transport.data.gouv.fr) — flux daté ${H(feedTs)}`);
 if (!t) console.log('  train absent du flux\n');

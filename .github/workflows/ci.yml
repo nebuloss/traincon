@@ -19,6 +19,7 @@ jobs:
 
       # Runs against the bundled capture, so CI never depends on the upstream
       # SNCF feed being up — it goes down regularly.
+      - run: npm run build
       - run: npm test
 
       # Advisory: a style nit in the installer should surface, not block a

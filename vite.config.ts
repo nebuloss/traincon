@@ -5,10 +5,10 @@ import { resolve } from 'node:path';
 // for bundling, the dev server and its proxy onto the API.
 export default defineConfig({
   root: 'src/client',
-  publicDir: resolve(__dirname, 'src/client/static'),
-  resolve: { alias: { '@': resolve(__dirname, './src') } },
+  publicDir: resolve(import.meta.dirname, 'src/client/static'),
+  resolve: { alias: { '@': resolve(import.meta.dirname, './src') } },
   build: {
-    outDir: resolve(__dirname, 'dist'),
+    outDir: resolve(import.meta.dirname, 'dist'),
     emptyOutDir: true,
     target: 'es2022',
   },

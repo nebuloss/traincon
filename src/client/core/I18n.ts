@@ -8,7 +8,9 @@
 // French is the reference: the app tracks French trains and the station names
 // in the data are French regardless of the interface language.
 
-const FR = {
+type Dict = Record<string, string>;
+
+const FR: Dict = {
   'app.title': 'Traincon',
   'app.offline': 'hors ligne',
   'app.localData': 'données locales',
@@ -203,7 +205,7 @@ const FR = {
   'error.badResponse': 'réponse inattendue du serveur',
 };
 
-const EN = {
+const EN: Dict = {
   'app.title': 'Traincon',
   'app.offline': 'offline',
   'app.localData': 'local data',
@@ -397,42 +399,72 @@ const EN = {
   'error.badResponse': 'unexpected response from the server',
 };
 
-export const LOCALES = {
+export interface Locale {
+  name: string;
+  dict: Dict;
+  intl: string;
+}
+
+export const LOCALES: Record<string, Locale> = {
   fr: { name: 'Français', dict: FR, intl: 'fr-FR' },
   en: { name: 'English', dict: EN, intl: 'en-GB' },
 };
 
 const FALLBACK = 'fr';
-let current = FALLBACK;
 
-/** Best match between the browser's languages and what we ship. */
-export function detectLang() {
-  const wanted = navigator.languages?.length ? navigator.languages : [navigator.language || ''];
-  for (const w of wanted) {
-    const base = String(w).toLowerCase().split('-')[0];
-    if (LOCALES[base]) return base;
-  }
-  return FALLBACK;
-}
-
-export function setLang(lang) {
-  current = LOCALES[lang] ? lang : FALLBACK;
-  document.documentElement.lang = current;
-  return current;
-}
-
-export const getLang = () => current;
-/** Locale tag for Intl / toLocaleTimeString. */
-export const intlLocale = () => LOCALES[current]?.intl ?? 'fr-FR';
+export type TranslateParams = Record<string, string | number>;
 
 /**
- * Translate. Missing keys fall back to French, then to the key itself — a
- * visible key beats a blank label when a translation is forgotten.
+ * Translation.
+ *
+ * The bound helper below is exported as `tr`, never `t`: `t` names a train
+ * throughout this codebase, and importing a translator under the same name
+ * made every call inside a function binding one resolve to the train instead —
+ * a "t is not a function" that no amount of key checking would reveal.
  */
-export function t(key, params) {
-  let s = LOCALES[current]?.dict[key] ?? LOCALES[FALLBACK].dict[key] ?? key;
-  if (params) {
-    for (const [k, v] of Object.entries(params)) s = s.split(`{${k}}`).join(String(v));
+export class I18n {
+  private current = FALLBACK;
+
+  /** Best match between the browser's languages and what we ship. */
+  static detect(): string {
+    const wanted = navigator.languages?.length ? navigator.languages : [navigator.language || ''];
+    for (const w of wanted) {
+      const base = String(w).toLowerCase().split('-')[0];
+      if (base && LOCALES[base]) return base;
+    }
+    return FALLBACK;
   }
-  return s;
+
+  get lang(): string {
+    return this.current;
+  }
+
+  /** Locale tag for Intl and toLocaleTimeString. */
+  get intlLocale(): string {
+    return LOCALES[this.current]?.intl ?? 'fr-FR';
+  }
+
+  setLang(lang: string): string {
+    this.current = LOCALES[lang] ? lang : FALLBACK;
+    document.documentElement.lang = this.current;
+    return this.current;
+  }
+
+  /**
+   * Missing keys fall back to French, then to the key itself — a visible key
+   * beats a blank label when a translation is forgotten.
+   */
+  translate(key: string, params?: TranslateParams): string {
+    let s = LOCALES[this.current]?.dict[key] ?? LOCALES[FALLBACK]!.dict[key] ?? key;
+    if (params) {
+      for (const [k, v] of Object.entries(params)) s = s.split(`{${k}}`).join(String(v));
+    }
+    return s;
+  }
 }
+
+/** The single instance the interface uses. */
+export const i18n = new I18n();
+
+/** Bound translator. Always imported as `tr`. */
+export const tr = (key: string, params?: TranslateParams): string => i18n.translate(key, params);
