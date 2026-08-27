@@ -119,7 +119,7 @@ fetch_app() {
   # Keep data/ across updates: it holds the cached GTFS, the rail geometry and
   # the last-known feed snapshot. Re-downloading them on every update would be
   # 24 MB for nothing.
-  rm -rf "$APP_DIR/src" "$APP_DIR/public" "$APP_DIR/scripts" "$APP_DIR/fixtures"
+  rm -rf "$APP_DIR/dist" "$APP_DIR/dist-server" "$APP_DIR/scripts" "$APP_DIR/fixtures" "$APP_DIR/tools"
   cp -r "$tmp"/. "$APP_DIR"/
   rm -rf "$tmp"
 
@@ -226,7 +226,7 @@ install_service_openrc() {
 name="$SERVICE_NAME"
 description="Traincon - live SNCF train tracking"
 command="$(command -v node)"
-command_args="$APP_DIR/src/server.js"
+command_args="$APP_DIR/dist-server/server/index.js"
 command_user="$SERVICE_USER"
 command_background=true
 directory="$APP_DIR"
@@ -264,7 +264,7 @@ Type=simple
 User=$SERVICE_USER
 WorkingDirectory=$APP_DIR
 EnvironmentFile=$APP_DIR/.env
-ExecStart=$(command -v node) $APP_DIR/src/server.js
+ExecStart=$(command -v node) $APP_DIR/dist-server/server/index.js
 Restart=always
 RestartSec=5
 

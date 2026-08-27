@@ -75,12 +75,32 @@ port 3000. Re-run the same command to update — `data/` is preserved so the
 
 ## Development
 
+TypeScript throughout, classes on both sides. Vite bundles the interface; the
+server compiles to `dist-server/`.
+
 ```bash
 npm install
 npm run fetch:geo     # rail network geometry, ~19 MB, once
+npm run build         # tsc (server) + vite (client)
 npm start             # http://localhost:3000
+npm run dev           # Vite dev server, proxying /api to :3000
+npm run typecheck
 npm test
 ```
+
+```
+src/shared/types.ts   the API contract, shared by both halves
+src/server/           GtfsStatic · FeedClient · RailGraph · Train
+                      CouplingDetector · TrainStore · ApiServer
+src/client/core/      I18n · Api · Cache · Format · Bookmarks · Theme
+src/client/components Timeline · TrainCard · MapView · TrainModal · Banner
+src/client/views/     WatchView · SearchView
+tools/                standalone diagnostics (onboard GPS, feed logger)
+```
+
+Every DTO the API emits is declared once in `src/shared/types.ts`, so a rename
+that diverges between server and client fails to compile rather than surfacing
+as `undefined` in the interface.
 
 The upstream feed goes down regularly, so development does not depend on it:
 

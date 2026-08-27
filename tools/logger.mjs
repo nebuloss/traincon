@@ -14,8 +14,9 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadStatic, SERVICE_LABELS } from './gtfs.js';
-import { loadTrains, positionOf } from './realtime.js';
+import { GtfsStatic, serviceMeta } from '../dist-server/server/GtfsStatic.js';
+import { FeedClient } from '../dist-server/server/FeedClient.js';
+import { Train } from '../dist-server/server/Train.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'data', 'revisions.jsonl');
@@ -32,7 +33,8 @@ const paris = (ts) =>
 const seen = new Map(); // number -> { feedTs, calls: Map(stopId -> {time, delay}), basis }
 
 async function tick(statics) {
-  const { trains, feedTs } = await loadTrains(statics);
+  const { trains: raw, feedTs } = await new FeedClient().load(statics);
+  const trains = raw.map((r) => new Train(r));
   const now = Math.floor(Date.now() / 1000);
   const events = [];
 
@@ -40,7 +42,7 @@ async function tick(statics) {
     const isTgv = ['OUI', 'OGO', 'LYR'].includes(t.service);
     if (!(watch.has(t.number) || (allTgv && isTgv))) continue;
 
-    const pos = positionOf(t, now);
+    const pos = t.positionAt(now);
     const prev = seen.get(t.number);
     const cur = new Map(t.calls.map((c) => [c.stopId, { time: c.time, delay: c.delay, name: c.name }]));
 
@@ -50,7 +52,7 @@ async function tick(statics) {
         if (!p) continue;
         if (p.time !== c.time) {
           events.push({
-            kind: 'revision', number: t.number, service: SERVICE_LABELS[t.service]?.label,
+            kind: 'revision', number: t.number, service: serviceMeta(t.service).label,
             stop: c.name, from: p.time, to: c.time, shiftSec: c.time - p.time,
             delayFrom: p.delay, delayTo: c.delay,
             observedAt: now, feedTs,
@@ -67,7 +69,7 @@ async function tick(statics) {
       }
     } else {
       events.push({
-        kind: 'first_seen', number: t.number, service: SERVICE_LABELS[t.service]?.label,
+        kind: 'first_seen', number: t.number, service: serviceMeta(t.service).label,
         origin: t.origin, destination: t.destination, maxDelay: t.maxDelay,
         calls: t.calls.map((c) => ({ stop: c.name, time: c.time, delay: c.delay })),
         observedAt: now, feedTs,
@@ -93,7 +95,7 @@ async function tick(statics) {
 }
 
 await mkdir(path.join(ROOT, 'data'), { recursive: true });
-const statics = await loadStatic(path.join(ROOT, 'data'));
+const statics = await GtfsStatic.load(path.join(ROOT, 'data'));
 console.log(`Logger démarré — ${allTgv ? 'tous les TGV' : [...watch].join(', ')} — toutes les ${PERIOD_MS / 1000}s`);
 console.log(`Sortie : ${OUT}\n`);
 for (;;) {
