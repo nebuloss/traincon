@@ -150,13 +150,51 @@ make_user() {
   esac
 }
 
+# How much heap V8 may use.
+#
+# NODE_OPTIONS=--max-old-space-size is a ceiling, and V8 treats it as licence
+# to defer collection: given 2 GB on a 512 MB container the process settled at
+# 392 MB RSS and was one traffic spike from the OOM killer. Inside LXC neither
+# free(1) nor /proc/meminfo reflect the container limit — only the cgroup does.
+heap_limit() {
+  mb=""
+
+  # cgroup first: the authoritative figure when the namespace exposes it.
+  for f in /sys/fs/cgroup/memory.max /sys/fs/cgroup/.lxc/memory.max \
+           /sys/fs/cgroup/memory/memory.limit_in_bytes; do
+    [ -r "$f" ] || continue
+    v="$(cat "$f" 2>/dev/null)"
+    case "$v" in max|'' ) continue ;; *[!0-9]* ) continue ;; esac
+    [ "$v" -gt 1099511627776 ] && continue   # "unlimited" leaking the host figure
+    mb=$((v / 1024 / 1024)); break
+  done
+
+  # Under LXC the cgroup often reads "max" inside the namespace while lxcfs
+  # still reports the container's real size in /proc/meminfo — which is how a
+  # 512 MB container is detected here.
+  if [ -z "$mb" ] && [ -r /proc/meminfo ]; then
+    mb="$(awk '/^MemTotal:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null)"
+  fi
+
+  case "$mb" in ''|*[!0-9]*) echo 512; return ;; esac
+
+  # Leave room for everything outside the old space: socket buffers, the
+  # protobuf decode, and the rail graph's typed arrays.
+  heap=$((mb * 55 / 100))
+  [ "$heap" -lt 192 ] && heap=192
+  [ "$heap" -gt 1024 ] && heap=1024
+  echo "$heap"
+}
+
 write_env() {
   # The key, when present, goes in a root-owned file the service reads —
   # not on the command line, where `ps` or /proc/<pid>/environ would show it.
+  HEAP_MB="$(heap_limit)"
+  info "Heap ceiling: ${HEAP_MB} MB"
   umask 077
   {
     printf 'PORT=%s\n' "$APP_PORT"
-    printf 'NODE_OPTIONS=--max-old-space-size=2048\n'
+    printf 'NODE_OPTIONS=--max-old-space-size=%s\n' "$HEAP_MB"
     [ -n "$SNCF_API_KEY" ] && printf 'SNCF_API_KEY=%s\n' "$SNCF_API_KEY"
   } > "$APP_DIR/.env"
   chown root:root "$APP_DIR/.env"
@@ -175,6 +213,14 @@ fix_perms() {
 
 install_service_openrc() {
   info "Installing the OpenRC service"
+
+  # start-stop-daemon opens output_log *after* dropping to command_user, and
+  # /var/log is root-owned 0755 — so the file must exist and be writable by
+  # that user beforehand, or the service dies before producing any output.
+  : > "/var/log/$SERVICE_NAME.log"
+  chown "$SERVICE_USER" "/var/log/$SERVICE_NAME.log"
+  chmod 640 "/var/log/$SERVICE_NAME.log"
+
   cat > "/etc/init.d/$SERVICE_NAME" <<EOF
 #!/sbin/openrc-run
 name="$SERVICE_NAME"
@@ -191,9 +237,12 @@ error_log="/var/log/$SERVICE_NAME.log"
 depend() { need net; after firewall; }
 
 start_pre() {
+  # Runs as root, before privileges are dropped, so the 0600 root-owned
+  # .env stays unreadable to the service user itself.
   set -a
   [ -f "$APP_DIR/.env" ] && . "$APP_DIR/.env"
   set +a
+  checkpath -d -o "$SERVICE_USER" -m 0755 "$APP_DIR/data"
 }
 EOF
   chmod +x "/etc/init.d/$SERVICE_NAME"
