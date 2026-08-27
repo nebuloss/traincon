@@ -1,4 +1,7 @@
-# Suivi TGV
+# Traincon
+
+*trinquons* + *ce train con* — because the app exists for the trains that are
+being exactly that.
 
 Live tracking for French trains — TGV, Intercités and TER — built on SNCF open
 data. Follow a train, see where it is on the network, and get the real time it
@@ -8,7 +11,7 @@ will reach your station.
 are all open data.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nebuloss/suivi-tgv/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/nebuloss/traincon/main/install.sh | sh
 ```
 
 Interface in French and English, light and dark themes, mobile-first.
@@ -53,20 +56,20 @@ left a platform.
 
 ```bash
 # as root, on the host that will serve it
-curl -fsSL https://raw.githubusercontent.com/nebuloss/suivi-tgv/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/nebuloss/traincon/main/install.sh | sh
 
 # with an optional SNCF API key
 curl -fsSL .../install.sh | SNCF_API_KEY=xxxx sh
 ```
 
-Installs to `/opt/suivi-tgv`, runs as a service (systemd or OpenRC), listens on
+Installs to `/opt/traincon`, runs as a service (systemd or OpenRC), listens on
 port 3000. Re-run the same command to update — `data/` is preserved so the
 24 MB of schedule and geometry are not re-downloaded.
 
 | Variable | Default | |
 |---|---|---|
 | `APP_PORT` | `3000` | listen port |
-| `APP_DIR` | `/opt/suivi-tgv` | install directory |
+| `APP_DIR` | `/opt/traincon` | install directory |
 | `SNCF_API_KEY` | — | optional, enables disruption reasons |
 | `FETCH_GEO` | `1` | `0` skips the 19 MB rail geometry |
 

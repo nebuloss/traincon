@@ -9,7 +9,7 @@
 // in the data are French regardless of the interface language.
 
 const FR = {
-  'app.title': 'Suivi TGV',
+  'app.title': 'Traincon',
   'app.offline': 'hors ligne',
   'app.localData': 'données locales',
   'app.live': 'direct',
@@ -204,7 +204,7 @@ const FR = {
 };
 
 const EN = {
-  'app.title': 'Train Tracker',
+  'app.title': 'Traincon',
   'app.offline': 'offline',
   'app.localData': 'local data',
   'app.live': 'live',

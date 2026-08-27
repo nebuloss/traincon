@@ -1,11 +1,11 @@
 #!/bin/sh
-# suivi-tgv — install / update (the same command does both)
+# traincon — install / update (the same command does both)
 #
 # Deploys the live SNCF train tracker as a service. No API key is required:
 # the schedule, the real-time feed and the rail geometry are all open data.
 #
 # Usage, as root:
-#   curl -fsSL https://raw.githubusercontent.com/nebuloss/suivi-tgv/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/nebuloss/traincon/main/install.sh | sh
 #
 # With an optional SNCF API key (disruption reasons, station boards):
 #   curl -fsSL .../install.sh | SNCF_API_KEY=xxxx sh
@@ -18,12 +18,12 @@ PATH="/usr/local/bin:$PATH"
 export PATH
 
 # ── Settings, all overridable from the environment ───────────────────────────
-APP_DIR="${APP_DIR:-/opt/suivi-tgv}"
+APP_DIR="${APP_DIR:-/opt/traincon}"
 APP_PORT="${APP_PORT:-3000}"
-SERVICE_NAME="${SERVICE_NAME:-suivi-tgv}"
-SERVICE_USER="${SERVICE_USER:-suivitgv}"
+SERVICE_NAME="${SERVICE_NAME:-traincon}"
+SERVICE_USER="${SERVICE_USER:-traincon}"
 NODE_VERSION="${NODE_VERSION:-22}"
-GH_REPO="${GH_REPO:-nebuloss/suivi-tgv}"
+GH_REPO="${GH_REPO:-nebuloss/traincon}"
 TARBALL="${TARBALL:-}"              # install this archive instead of a release
 SNCF_API_KEY="${SNCF_API_KEY:-}"    # optional
 FETCH_GEO="${FETCH_GEO:-1}"         # 0 to skip the 19 MB rail geometry
@@ -89,7 +89,7 @@ fetch_app() {
     tar -xzf "$TARBALL" -C "$tmp"
   else
     info "Telechargement de la derniere version de $GH_REPO"
-    url="https://github.com/${GH_REPO}/releases/latest/download/suivi-tgv.tar.gz"
+    url="https://github.com/${GH_REPO}/releases/latest/download/traincon.tar.gz"
     curl -fsSL "$url" -o "$tmp/app.tar.gz" || error "telechargement impossible : $url"
     tar -xzf "$tmp/app.tar.gz" -C "$tmp"
   fi
@@ -156,7 +156,7 @@ install_service_openrc() {
   cat > "/etc/init.d/$SERVICE_NAME" <<EOF
 #!/sbin/openrc-run
 name="$SERVICE_NAME"
-description="Suivi TGV — suivi des trains SNCF en temps reel"
+description="Traincon — suivi des trains SNCF en temps reel"
 command="$(command -v node)"
 command_args="$APP_DIR/src/server.js"
 command_user="$SERVICE_USER"
@@ -183,7 +183,7 @@ install_service_systemd() {
   info "Installation du service systemd"
   cat > "/etc/systemd/system/$SERVICE_NAME.service" <<EOF
 [Unit]
-Description=Suivi TGV — suivi des trains SNCF en temps reel
+Description=Traincon — suivi des trains SNCF en temps reel
 Documentation=https://github.com/$GH_REPO
 After=network-online.target
 Wants=network-online.target
@@ -248,7 +248,7 @@ wait_ready || true
 
 ip=$(hostname -I 2>/dev/null | awk '{print $1}')
 printf '\n'
-info "Suivi TGV installe dans $APP_DIR"
+info "Traincon installe dans $APP_DIR"
 info "Interface : http://${ip:-127.0.0.1}:$APP_PORT"
 [ -z "$SNCF_API_KEY" ] &&
   warn "sans SNCF_API_KEY : pas de motifs de perturbation (le suivi fonctionne quand meme)"

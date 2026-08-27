@@ -1,4 +1,4 @@
-// Suivi TGV — frontend.
+// Traincon — frontend.
 //
 // Design rule: times shown big are SNCF's own live forecast (hard data).
 // Positions are derived and always labelled as estimates.

@@ -1,5 +1,5 @@
 {
-  "name": "suivi-tgv",
+  "name": "traincon",
   "version": "1.0.0",
   "description": "Live tracking for French trains, built on SNCF open data",
   "main": "index.js",
@@ -22,6 +22,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nebuloss/suivi-tgv.git"
+    "url": "git+https://github.com/nebuloss/traincon.git"
   }
 }
