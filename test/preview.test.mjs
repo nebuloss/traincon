@@ -17,12 +17,34 @@ const DIST = path.join(ROOT, 'dist');
 
 const { ApiServer } = await import(path.join(ROOT, 'dist-server/server/Server.js'));
 
-/** Static serving never touches the store, so a stub is enough. */
+/**
+ * One train, enough for the preview card.
+ *
+ * Times are fixed so the assertions below can name them: Paris at 18:46 and
+ * Bordeaux at 16:30 are the real figures from the run that motivated the
+ * delay reconciliation.
+ */
+const AT = (h, m) => Math.floor(Date.UTC(2026, 0, 15, h - 1, m) / 1000); // Paris = UTC+1
+const TRAIN = {
+  number: '8540',
+  serviceLabel: 'TGV INOUI',
+  origin: 'Hendaye',
+  destination: 'Paris Montparnasse',
+  delay: 50 * 60,
+  cancelled: false,
+  next: { name: 'Bordeaux Saint-Jean', time: AT(16, 30) },
+  calls: [{ name: 'Hendaye', time: AT(14, 2) }, { name: 'Paris Montparnasse', time: AT(18, 46) }],
+};
+
+const store = {
+  find: (n) => (n === '8540' ? [TRAIN] : []),
+};
+
 let server;
 let base;
 
 before(async () => {
-  server = new ApiServer({}, DIST);
+  server = new ApiServer(store, DIST);
   await server.listen(0);
   base = `http://127.0.0.1:${server.port}`;
 });
@@ -114,4 +136,74 @@ test('a deep link serves the app shell, not a 404', async () => {
     assert.match(body, /<meta property="og:title"/);
   }
   assert.equal((await get('/api/nope')).res.status, 404);
+});
+
+
+// ── per-train cards ──────────────────────────────────────────────────────────
+
+/** Pull one meta tag's content out of the served HTML. */
+function meta(html, key) {
+  const m = html.match(new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)"`));
+  return m ? m[1] : null;
+}
+
+test('a link to one train previews that train, not the site', async () => {
+  const { body } = await get('/train/8540');
+  assert.equal(meta(body, 'og:title'), 'TGV INOUI 8540 · Hendaye → Paris Montparnasse');
+
+  const desc = meta(body, 'og:description');
+  assert.match(desc, /Retard 50 min/);
+  assert.match(desc, /prochain arrêt Bordeaux Saint-Jean à 16:30/);
+  assert.match(desc, /arrivée 18:46/);
+
+  // og:url names the train, so the preview links back to the same page.
+  assert.match(meta(body, 'og:url'), /\/train\/8540$/);
+  assert.equal(meta(body, 'twitter:title'), meta(body, 'og:title'));
+});
+
+test('the query form gets the same card as the path form', async () => {
+  const viaPath = await get('/train/8540');
+  const viaQuery = await get('/?train=8540');
+  assert.equal(meta(viaQuery.body, 'og:title'), meta(viaPath.body, 'og:title'));
+});
+
+test('an unknown train falls back to the site card', async () => {
+  const { body } = await get('/train/9999');
+  assert.match(meta(body, 'og:title'), /^Traincon/);
+});
+
+test('no placeholder ever reaches a crawler', async () => {
+  for (const p of ['/', '/train/8540', '/train/9999', '/?train=8540']) {
+    const { body } = await get(p);
+    for (const ph of ['%OG_TITLE%', '%OG_DESC%', '%OG_URL%', '%ORIGIN%']) {
+      assert.ok(!body.includes(ph), `${ph} survived on ${p}`);
+    }
+  }
+});
+
+test('the ETag tracks the card, not just the file', async () => {
+  // Same file, different train: a shared ETag would let a crawler be handed a
+  // 304 and keep the previous train's card.
+  const a = await get('/train/8540');
+  const b = await get('/train/9999');
+  assert.notEqual(a.res.headers.get('etag'), b.res.headers.get('etag'));
+
+  // A repeat of the same page must still revalidate to 304.
+  const again = await fetch(`${base}/train/8540`, {
+    headers: { 'if-none-match': a.res.headers.get('etag') },
+  });
+  assert.equal(again.status, 304);
+});
+
+test('train text is escaped into the attribute', async () => {
+  // Station names come from the feed, not from us.
+  store.find = (n) =>
+    n === 'XSS' ? [{ ...TRAIN, number: 'XSS', destination: '"><script>alert(1)</script>' }] : [];
+  try {
+    const { body } = await get('/train/XSS');
+    assert.ok(!body.includes('<script>alert(1)</script>'), 'must not escape the attribute');
+    assert.match(meta(body, 'og:title'), /&quot;&gt;/);
+  } finally {
+    store.find = (n) => (n === '8540' ? [TRAIN] : []);
+  }
 });

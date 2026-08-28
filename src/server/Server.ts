@@ -7,9 +7,11 @@
 
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type { TrainStore } from './TrainStore.ts';
-import type { Family } from '../shared/types.ts';
+import { trainFromPath, trainFromQuery } from '../shared/deeplink.ts';
+import type { Family, TrainDTO } from '../shared/types.ts';
 
 const MIME: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',
@@ -27,6 +29,30 @@ const MIME: Readonly<Record<string, string>> = {
 };
 
 type Route = (req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void> | void;
+
+/** Shown for any page that is not one train. */
+const SITE_TITLE = 'Traincon — suivi SNCF en temps réel';
+const SITE_DESC =
+  'Position estimée, retards et horaires révisés pour les TGV et TER, à partir des données ouvertes.';
+
+/** Escape for an HTML attribute. Everything substituted below is untrusted. */
+function attr(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+/** hh:mm in Paris time, which is what the timetable is quoted in. */
+function hhmm(epochSeconds: number): string {
+  return new Date(epochSeconds * 1000).toLocaleTimeString('fr-FR', {
+    timeZone: 'Europe/Paris',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 export class ApiServer {
   private readonly server: HttpServer;
@@ -207,7 +233,7 @@ export class ApiServer {
       }
 
       if (p.startsWith('/api/')) return this.json(res, { error: 'not found' }, 404);
-      await this.serveStatic(req, res, p);
+      await this.serveStatic(req, res, p, url.search);
     } catch (e) {
       this.json(res, { error: (e as Error).message }, 500);
     }
@@ -241,6 +267,38 @@ export class ApiServer {
   }
 
   /**
+   * Title and description for a link to one train.
+   *
+   * A shared link is worth more when the preview already says which train and
+   * how late it is — the reader can often stop there. Falls back to the site
+   * card when the number is unknown, so a stale link still previews.
+   */
+  private preview(urlPath: string, search: string): { title: string; desc: string } {
+    const hit = trainFromPath(urlPath) ?? trainFromQuery(search);
+    if (!hit) return { title: SITE_TITLE, desc: SITE_DESC };
+
+    const train: TrainDTO | undefined = this.store.find(hit.train)[0];
+    if (!train) return { title: SITE_TITLE, desc: SITE_DESC };
+
+    const title = `${train.serviceLabel} ${train.number} · ${train.origin} → ${train.destination}`;
+
+    const parts: string[] = [];
+    if (train.cancelled) {
+      parts.push('Supprimé');
+    } else if (train.delay >= 60) {
+      parts.push(`Retard ${Math.round(train.delay / 60)} min`);
+    } else {
+      parts.push("À l'heure");
+    }
+    if (train.next) {
+      parts.push(`prochain arrêt ${train.next.name} à ${hhmm(train.next.time)}`);
+    }
+    parts.push(`arrivée ${hhmm(train.calls[train.calls.length - 1]!.time)}`);
+
+    return { title, desc: parts.join(' · ') };
+  }
+
+  /**
    * Static files, always revalidated.
    *
    * Shipping no cache headers leaves it to the browser's heuristics, and a
@@ -248,7 +306,12 @@ export class ApiServer {
    * means revalidate every time, and the ETag makes that a 304 with no body
    * when nothing changed.
    */
-  private async serveStatic(req: IncomingMessage, res: ServerResponse, urlPath: string): Promise<void> {
+  private async serveStatic(
+    req: IncomingMessage,
+    res: ServerResponse,
+    urlPath: string,
+    search = '',
+  ): Promise<void> {
     const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
     let file = path.join(this.publicDir, rel);
     if (!file.startsWith(this.publicDir)) {
@@ -282,16 +345,29 @@ export class ApiServer {
       let buf = await readFile(file);
       if (path.extname(file) === '.html') {
         const origin = this.origin(req);
-        // Same bytes for the same host, so the ETag has to vary with it too.
+        const card = this.preview(urlPath, search);
+
+        // The page now varies by host *and* by which train it describes, and
+        // that description changes as the delay does — so the ETag has to
+        // cover all of it or a crawler gets a 304 with yesterday's card.
+        const vary = `${origin ?? ''}|${card.title}|${card.desc}`;
         headers.etag = `W/"${info.size.toString(36)}-${info.mtimeMs.toString(36)}-${
-          Buffer.from(origin ?? '').toString('base64url') || 'x'
+          createHash('sha1').update(vary).digest('base64url').slice(0, 12)
         }"`;
         if (req.headers['if-none-match'] === headers.etag) {
           res.writeHead(304, headers);
           res.end();
           return;
         }
-        buf = Buffer.from(buf.toString('utf8').replaceAll('%ORIGIN%', origin ?? ''));
+
+        buf = Buffer.from(
+          buf
+            .toString('utf8')
+            .replaceAll('%OG_TITLE%', attr(card.title))
+            .replaceAll('%OG_DESC%', attr(card.desc))
+            .replaceAll('%OG_URL%', attr((origin ?? '') + urlPath))
+            .replaceAll('%ORIGIN%', origin ?? ''),
+        );
       }
       res.writeHead(200, { ...headers, 'content-length': String(buf.length) });
       res.end(buf);

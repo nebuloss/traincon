@@ -16,15 +16,13 @@
  * English too, so a link shared from the English interface reads naturally.
  */
 
+import { TRAIN_NUMBER, trainFromPath, trainFromQuery } from '../../shared/deeplink.ts';
 import type { ModalTab } from '../components/TrainModal.ts';
 
 export interface Route {
   train: string | null;
   tab: ModalTab | null;
 }
-
-/** Train numbers are short and alphanumeric; anything else is not a link. */
-const NUMBER = /^[A-Za-z0-9]{1,8}$/;
 
 const TABS: Readonly<Record<string, ModalTab>> = {
   apercu: 'apercu',
@@ -53,23 +51,15 @@ export class Router {
     const path = Router.fromPath(loc.pathname);
     if (path.train) return path;
 
-    const params = new URLSearchParams(loc.search);
-    const q = params.get('train') ?? params.get('t');
-    if (q && NUMBER.test(q)) {
-      return { train: q.toUpperCase(), tab: Router.toTab(params.get('tab')) };
-    }
+    const query = trainFromQuery(loc.search);
+    if (query) return { train: query.train, tab: Router.toTab(query.tab) };
 
     return Router.fromHash(loc.hash);
   }
 
   private static fromPath(pathname: string): Route {
-    const parts = pathname.split('/').filter(Boolean);
-    if (parts.length < 2 || (parts[0] !== 'train' && parts[0] !== 't')) {
-      return { train: null, tab: null };
-    }
-    const n = parts[1]!;
-    if (!NUMBER.test(n)) return { train: null, tab: null };
-    return { train: n.toUpperCase(), tab: Router.toTab(parts[2]) };
+    const hit = trainFromPath(pathname);
+    return hit ? { train: hit.train, tab: Router.toTab(hit.tab) } : { train: null, tab: null };
   }
 
   private static fromHash(hash: string): Route {
@@ -78,17 +68,15 @@ export class Router {
 
     // `#train=8540&tab=carte`, or a path-ish `#/train/8540`.
     if (raw.includes('=')) {
-      const params = new URLSearchParams(raw);
-      const n = params.get('train') ?? params.get('t');
-      if (n && NUMBER.test(n)) {
-        return { train: n.toUpperCase(), tab: Router.toTab(params.get('tab')) };
-      }
-      return { train: null, tab: null };
+      const hit = trainFromQuery(raw);
+      return hit ? { train: hit.train, tab: Router.toTab(hit.tab) } : { train: null, tab: null };
     }
     if (raw.includes('/')) return Router.fromPath('/' + raw);
 
     // A bare `#8540`.
-    return NUMBER.test(raw) ? { train: raw.toUpperCase(), tab: null } : { train: null, tab: null };
+    return TRAIN_NUMBER.test(raw)
+      ? { train: raw.toUpperCase(), tab: null }
+      : { train: null, tab: null };
   }
 
   private static toTab(value: string | null | undefined): ModalTab | null {

@@ -22,6 +22,8 @@ const FR: Dict = {
   'theme.dark': 'Sombre',
   'theme.group': 'Thème',
 
+  'app.source': 'Code source sur GitHub',
+
   'tab.watch': 'Mes trains',
   'tab.search': 'Recherche',
   'nav.label': 'Navigation',
@@ -216,6 +218,8 @@ const EN: Dict = {
   'theme.light': 'Light',
   'theme.dark': 'Dark',
   'theme.group': 'Theme',
+
+  'app.source': 'Source code on GitHub',
 
   'tab.watch': 'My trains',
   'tab.search': 'Search',

@@ -161,10 +161,18 @@ Tabs are also accepted by their English names (`overview`, `journey`, `map`,
 `log`), so a link shared from the English interface reads naturally.
 
 Link previews in WhatsApp, Signal, Slack and the rest come from the Open Graph
-tags. Those need an absolute URL for the image; it is taken from
+tags, and a link to one train carries that train's own card:
+
+> **TGV INOUI 8540 · Hendaye → Paris Montparnasse**
+> Retard 50 min · prochain arrêt Bordeaux Saint-Jean à 16:30 · arrivée 18:46
+
+Those tags need an absolute URL for the image; it is taken from
 `X-Forwarded-Host`/`Host` per request, so a reverse proxy needs no extra
-configuration — set `PUBLIC_URL` to override. Re-run
-`python3 scripts/make-og-image.py` after changing the artwork.
+configuration — set `PUBLIC_URL` to override. The card image itself is static;
+re-run `python3 scripts/make-og-image.py` after changing the artwork.
+
+Note that WhatsApp caches a preview for days, so a link shared before a change
+keeps the old card until the cache expires or the URL changes.
 
 ## Notes
 

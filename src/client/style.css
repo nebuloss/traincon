@@ -99,6 +99,15 @@ button { touch-action: manipulation; }
 @keyframes sync { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .dot.syncing { animation: none; } }
 
+/* Sized to line up with the toggle and the language picker beside it. */
+.src-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; flex: 0 0 auto;
+  border-radius: 999px; color: var(--muted);
+  border: 1px solid var(--line); background: var(--panel-2);
+}
+.src-link:hover, .src-link:focus-visible { color: var(--text); }
+
 .theme-toggle {
   display: inline-flex; gap: 2px; padding: 2px;
   border: 1px solid var(--line); border-radius: 999px; background: var(--panel-2);
@@ -336,6 +345,11 @@ button.primary:active { transform: translateY(1px); }
 }
 @media (max-width: 420px) {
   .cd-next { margin-left: 0; width: 100%; }
+  /* Five controls in the header is a squeeze on a narrow phone: tighten the
+     gaps and let the title ellipsis rather than push anything off-screen. */
+  .head-right { gap: 6px; }
+  .brand { min-width: 0; }
+  .brand h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 /* ---------- next-stop focus ---------- */

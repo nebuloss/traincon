@@ -79,6 +79,9 @@ export class App {
     for (const el of document.querySelectorAll<HTMLElement>('[data-i18n-aria]')) {
       el.setAttribute('aria-label', tr(el.dataset['i18nAria']!));
     }
+    for (const el of document.querySelectorAll<HTMLElement>('[data-i18n-title]')) {
+      el.title = tr(el.dataset['i18nTitle']!);
+    }
     const d = document.getElementById('mapDisclaimer');
     if (d) d.innerHTML = tr('map.disclaimer'); // this one carries <strong>
     document.title = tr('app.title');
