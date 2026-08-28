@@ -53,6 +53,11 @@ export class CouplingDetector {
     this.lastChange.set(number, feedTs);
   }
 
+  /** Drop a train that has left the feed, so this map stays bounded. */
+  forget(number: string): void {
+    this.lastChange.delete(number);
+  }
+
   detect(trains: Train[], now: number, graph: RailGraph | null): CouplingResult {
     const buckets = new Map<string, Member[]>();
 

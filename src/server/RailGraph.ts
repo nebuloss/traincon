@@ -206,7 +206,17 @@ export class RailGraph {
   private readonly adj: number[][] = [];
   private readonly index = new Map<string, number>();
   private readonly cells = new Map<string, number[]>();
+  /**
+   * Routed paths, bounded.
+   *
+   * Each entry holds up to a few thousand coordinate pairs plus three parallel
+   * arrays, and a day's worth of legs is ~8000 of them — 80 MB that never came
+   * back, which is what eventually exhausted the heap on a 512 MB container.
+   * A Map preserves insertion order, so dropping its oldest keys approximates
+   * least-recently-added; a cache hit re-inserts, keeping hot paths resident.
+   */
   private readonly pathCache = new Map<string, RailPath | null>();
+  private static readonly PATH_CACHE_MAX = 2500;
 
   /** Thinned in-service network for drawing; built alongside the graph. */
   display: { type: 'FeatureCollection'; features: unknown[] } | null = null;
@@ -406,7 +416,12 @@ export class RailGraph {
   path(aLat: number, aLon: number, bLat: number, bLon: number): RailPath | null {
     const ck = `${aLat.toFixed(4)},${aLon.toFixed(4)}|${bLat.toFixed(4)},${bLon.toFixed(4)}`;
     const hit = this.pathCache.get(ck);
-    if (hit !== undefined) return hit;
+    if (hit !== undefined) {
+      // Re-insert so frequently used legs survive eviction.
+      this.pathCache.delete(ck);
+      this.pathCache.set(ck, hit);
+      return hit;
+    }
 
     const A = this.nearest(aLat, aLon);
     const B = this.nearest(bLat, bLon);
@@ -451,6 +466,11 @@ export class RailGraph {
       }
     }
     this.pathCache.set(ck, result);
+    while (this.pathCache.size > RailGraph.PATH_CACHE_MAX) {
+      const oldest = this.pathCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.pathCache.delete(oldest);
+    }
     return result;
   }
 

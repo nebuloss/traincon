@@ -27,6 +27,8 @@ import type {
 
 const POLL_MS = 60_000;
 const HISTORY_MAX = 60;
+/** Keep a train's history this long after it leaves the feed. */
+const PRUNE_AFTER_MS = 2 * 3600 * 1000;
 
 export interface ListFilter {
   family?: Family | 'all';
@@ -50,6 +52,8 @@ export class TrainStore {
     calls: new Map(),
   };
   private readonly history = new Map<string, DelaySample[]>();
+  /** number -> when it was last in the feed, so stale entries can be dropped. */
+  private readonly lastSeen = new Map<string, number>();
 
   feedTs = 0;
   fetchedAt = 0;
@@ -74,6 +78,10 @@ export class TrainStore {
       this.rail = await RailGraph.load(this.dataDir);
       if (this.rail.display) {
         this.railDisplayGz = gzipSync(Buffer.from(JSON.stringify(this.rail.display)), { level: 9 });
+        // Only the gzipped buffer is ever served, so drop the parsed object —
+        // it is ~15 000 line strings that would otherwise sit in the heap for
+        // the life of the process.
+        this.rail.display = null;
       }
     } catch (e) {
       console.warn('rail geometry unavailable, falling back to straight lines:', (e as Error).message);
@@ -142,7 +150,29 @@ export class TrainStore {
     }
 
     this.couples = this.coupling.detect(this.trains, now, this.rail);
+    this.prune();
     void this.saveSnapshot().catch(() => undefined);
+  }
+
+  /**
+   * Forget trains that have left the feed.
+   *
+   * The history and coupling maps are keyed by train number and were only ever
+   * added to, so a long-running process accumulated every service of every day
+   * it had been up. Trains drop out of the feed briefly, so allow a grace
+   * period rather than pruning to the current set on every refresh.
+   */
+  private prune(): void {
+    const live = new Set(this.trains.map((t) => t.number));
+    const now = Date.now();
+    for (const n of live) this.lastSeen.set(n, now);
+
+    for (const [n, at] of this.lastSeen) {
+      if (live.has(n) || now - at < PRUNE_AFTER_MS) continue;
+      this.lastSeen.delete(n);
+      this.history.delete(n);
+      this.coupling.forget(n);
+    }
   }
 
   // ── snapshot ───────────────────────────────────────────────────────────────
