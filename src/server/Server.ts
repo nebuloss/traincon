@@ -45,12 +45,31 @@ function attr(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-/** hh:mm in Paris time, which is what the timetable is quoted in. */
+/**
+ * A delay the way the page writes it: under the hour "45 min", over it
+ * "1 h 30" — not the "90 min" a bare division gives.
+ */
+function delayText(seconds: number): string {
+  const total = Math.round(seconds / 60);
+  if (total < 60) return `Retard ${total} min`;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return m === 0 ? `Retard ${h} h` : `Retard ${h} h ${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * hh:mm in Paris time, which is what the timetable is quoted in.
+ *
+ * hour12 is set explicitly rather than left to the locale: Alpine's Node is
+ * built with reduced ICU data, so 'fr-FR' falls back to en-US and the card
+ * went out reading "11:21 AM" on the container while being correct here.
+ */
 function hhmm(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toLocaleTimeString('fr-FR', {
     timeZone: 'Europe/Paris',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   });
 }
 
@@ -286,14 +305,17 @@ export class ApiServer {
     if (train.cancelled) {
       parts.push('Supprimé');
     } else if (train.delay >= 60) {
-      parts.push(`Retard ${Math.round(train.delay / 60)} min`);
+      parts.push(delayText(train.delay));
     } else {
       parts.push("À l'heure");
     }
-    if (train.next) {
+    const terminus = train.calls[train.calls.length - 1]!;
+    // On the last leg the next stop *is* the terminus; saying it twice reads
+    // like a mistake in a preview that has room for one line.
+    if (train.next && train.next.stopId !== terminus.stopId) {
       parts.push(`prochain arrêt ${train.next.name} à ${hhmm(train.next.time)}`);
     }
-    parts.push(`arrivée ${hhmm(train.calls[train.calls.length - 1]!.time)}`);
+    parts.push(`arrivée ${terminus.name} à ${hhmm(terminus.time)}`);
 
     return { title, desc: parts.join(' · ') };
   }

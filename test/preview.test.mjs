@@ -32,8 +32,11 @@ const TRAIN = {
   destination: 'Paris Montparnasse',
   delay: 50 * 60,
   cancelled: false,
-  next: { name: 'Bordeaux Saint-Jean', time: AT(16, 30) },
-  calls: [{ name: 'Hendaye', time: AT(14, 2) }, { name: 'Paris Montparnasse', time: AT(18, 46) }],
+  next: { stopId: 'bordeaux', name: 'Bordeaux Saint-Jean', time: AT(16, 30) },
+  calls: [
+    { stopId: 'hendaye', name: 'Hendaye', time: AT(14, 2) },
+    { stopId: 'paris', name: 'Paris Montparnasse', time: AT(18, 46) },
+  ],
 };
 
 const store = {
@@ -154,7 +157,7 @@ test('a link to one train previews that train, not the site', async () => {
   const desc = meta(body, 'og:description');
   assert.match(desc, /Retard 50 min/);
   assert.match(desc, /prochain arrêt Bordeaux Saint-Jean à 16:30/);
-  assert.match(desc, /arrivée 18:46/);
+  assert.match(desc, /arrivée Paris Montparnasse à 18:46/);
 
   // og:url names the train, so the preview links back to the same page.
   assert.match(meta(body, 'og:url'), /\/train\/8540$/);
@@ -206,4 +209,60 @@ test('train text is escaped into the attribute', async () => {
   } finally {
     store.find = (n) => (n === '8540' ? [TRAIN] : []);
   }
+});
+
+
+test('times are 24-hour, whatever ICU data the host shipped', async () => {
+  // Alpine's Node is built with reduced ICU, so 'fr-FR' falls back to en-US
+  // and this read "11:21 AM" in production while passing locally.
+  const { body } = await get('/train/8540');
+  const desc = meta(body, 'og:description');
+  assert.ok(!/[AP]M/.test(desc), `expected 24-hour times, got: ${desc}`);
+  assert.match(desc, /18:46/);
+});
+
+test('the terminus is not named twice', async () => {
+  // On the last leg the next stop is the terminus.
+  store.find = () => [
+    { ...TRAIN, next: { stopId: 'paris', name: 'Paris Montparnasse', time: AT(18, 46) } },
+  ];
+  try {
+    const desc = meta((await get('/train/8540')).body, 'og:description');
+    assert.equal(desc.match(/Paris Montparnasse/g).length, 1, desc);
+    assert.ok(!desc.includes('prochain arrêt'), desc);
+  } finally {
+    store.find = (n) => (n === '8540' ? [TRAIN] : []);
+  }
+});
+
+
+test('a delay over the hour reads in hours, as the page writes it', async () => {
+  // A real 8081 went out as "Retard 90 min"; the page says 1 h 30.
+  const cases = [
+    [45 * 60, 'Retard 45 min'],
+    [70 * 60, 'Retard 1 h 10'],
+    [90 * 60, 'Retard 1 h 30'],
+    [120 * 60, 'Retard 2 h'],
+  ];
+  for (const [delay, expected] of cases) {
+    store.find = () => [{ ...TRAIN, delay }];
+    const desc = meta((await get('/train/8540')).body, 'og:description');
+    assert.ok(desc.startsWith(expected), `${delay / 60} min → ${desc}`);
+  }
+  store.find = (n) => (n === '8540' ? [TRAIN] : []);
+});
+
+test('a cancelled train says so first', async () => {
+  store.find = () => [{ ...TRAIN, cancelled: true }];
+  try {
+    assert.match(meta((await get('/train/8540')).body, 'og:description'), /^Supprimé/);
+  } finally {
+    store.find = (n) => (n === '8540' ? [TRAIN] : []);
+  }
+});
+
+test('og:url keeps the tab, so the preview links where it was shared from', async () => {
+  const { body } = await get('/train/8540/trajet');
+  assert.match(meta(body, 'og:url'), /\/train\/8540\/trajet$/);
+  assert.match(meta(body, 'og:title'), /8540/);
 });

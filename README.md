@@ -164,7 +164,7 @@ Link previews in WhatsApp, Signal, Slack and the rest come from the Open Graph
 tags, and a link to one train carries that train's own card:
 
 > **TGV INOUI 8540 · Hendaye → Paris Montparnasse**
-> Retard 50 min · prochain arrêt Bordeaux Saint-Jean à 16:30 · arrivée 18:46
+> Retard 1 h 30 · prochain arrêt Dol-de-Bretagne à 11:11 · arrivée Saint-Malo à 11:25
 
 Those tags need an absolute URL for the image; it is taken from
 `X-Forwarded-Host`/`Host` per request, so a reverse proxy needs no extra
