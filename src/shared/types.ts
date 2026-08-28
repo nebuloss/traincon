@@ -214,10 +214,23 @@ export interface TrainFound {
   trains: TrainDTO[];
 }
 
+/**
+ * Why a lookup came back empty.
+ *
+ * The distinction matters to the bookmark list: 'dormant' is a real train that
+ * simply is not running inside the forecast window, and will come back on its
+ * own; 'unknown' is a number that appears nowhere in the timetable, so the
+ * bookmark is junk and saying "not running" about it would be a lie that hides
+ * a typo until the day it matters.
+ */
+export type MissingReason = 'dormant' | 'unknown';
+
 export interface TrainNotFound {
   found: false;
   number: string;
   knownSchedule: { number: string; service: string; line: string } | null;
+  reason: MissingReason;
+  /** English prose for API consumers; the interface translates `reason`. */
   message: string;
 }
 

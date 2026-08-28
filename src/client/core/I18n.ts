@@ -37,6 +37,11 @@ const FR: Dict = {
   'worst.failed': 'Palmarès indisponible : {error}',
   'nav.label': 'Navigation',
 
+  'watch.dormantTag': 'ne circule pas',
+  'watch.dormantBody': 'Hors de la fenêtre de prévision (~8 h), ou ne circule pas aujourd’hui.',
+  'watch.unknownTag': 'inconnu',
+  'watch.unknownBody': 'Le numéro {n} n’existe pas dans les horaires.',
+  'watch.removeBookmark': 'Retirer des favoris',
   'watch.empty.title': 'Aucun train suivi',
   'watch.empty.body': "Cherchez votre train par son numéro, sa destination ou une gare desservie. "
     + "Vous verrez sa progression en direct et l'heure réelle à votre gare.",
@@ -243,6 +248,11 @@ const EN: Dict = {
   'worst.failed': 'Hall of shame unavailable: {error}',
   'nav.label': 'Navigation',
 
+  'watch.dormantTag': 'not running',
+  'watch.dormantBody': 'Outside the ~8 h forecast window, or not running today.',
+  'watch.unknownTag': 'unknown',
+  'watch.unknownBody': 'Number {n} does not exist in the timetable.',
+  'watch.removeBookmark': 'Remove bookmark',
   'watch.empty.title': 'No trains followed',
   'watch.empty.body': 'Search for your train by number, destination or a station it calls at. '
     + "You'll see its progress live and the real time at your station.",

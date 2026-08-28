@@ -53,9 +53,13 @@ export class Bookmarks {
       .split(',')
       .map((n) => n.trim())
       .filter(Boolean);
-    if (!nums.length || nums.some((n) => !/^\d{1,6}$/.test(n))) return null;
+    if (!nums.length) return null;
 
     const on = nums.some((n) => this.has(n));
+    // The shape check gates *adding* only. Applying it to removal too meant a
+    // bad entry — however it got in — could never be cleared: the star reported
+    // "invalid" and left it in the list for ever.
+    if (!on && nums.some((n) => !/^\d{1,6}$/.test(n))) return null;
     if (on) this.numbers = this.numbers.filter((n) => !nums.includes(n));
     else for (const n of nums) if (!this.has(n)) this.numbers.push(n);
 

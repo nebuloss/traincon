@@ -239,6 +239,7 @@ export class ApiServer {
               found: false,
               number,
               knownSchedule: known,
+              reason: known ? 'dormant' : 'unknown',
               message: known
                 ? 'Not in the live feed right now — it runs outside the ~8 h forecast window, or not today.'
                 : 'Unknown train number.',
