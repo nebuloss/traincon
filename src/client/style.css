@@ -404,6 +404,9 @@ button.primary:active { transform: translateY(1px); }
   --row-h: 46px;      /* must match ROW_H in app.js */
   --gutter: 34px;
   position: relative;
+  /* Own stacking context: the marker's z-index is then resolved against the
+     rail and the dots, and cannot be reordered by anything outside. */
+  isolation: isolate;
   padding: 6px 0;
   border-top: 1px solid var(--line);
 }
@@ -488,14 +491,17 @@ button.primary:active { transform: translateY(1px); }
 .tl-train {
   position: absolute; left: calc(var(--gutter) / 2); margin-top: 6px;
   transform: translate(-50%, -50%);
-  z-index: 3;
+  z-index: 4;
   width: 30px; height: 30px;
   display: grid; place-items: center;
   font-size: 16px; line-height: 1;
   border-radius: 50%;
   background: var(--panel);
   border: 2.5px solid var(--accent);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+  /* The second shadow is an opaque halo in the panel colour: it breaks the
+     rail cleanly around the marker instead of letting the line run up to the
+     ring, which read as the line passing over the train. */
+  box-shadow: 0 0 0 4px var(--panel), 0 2px 6px rgba(0, 0, 0, .35);
   transition: top .8s ease;
 }
 @media (min-width: 700px) {
