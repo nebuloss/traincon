@@ -22,6 +22,7 @@ Interface in French and English, light and dark themes, mobile-first.
 - **Journey view** — every stop with its live arrival time and delay
 - **Map** — the train projected onto the actual track, zoomed to match its speed
 - **Log** — how much the current estimate can be trusted, and what has changed
+- **Shareable links** — `/train/8540` opens straight on that train
 
 ## What the data can and cannot tell you
 
@@ -72,6 +73,7 @@ port 3000. Re-run the same command to update — `data/` is preserved so the
 | `APP_DIR` | `/opt/traincon` | install directory |
 | `SNCF_API_KEY` | — | optional, enables disruption reasons |
 | `FETCH_GEO` | `1` | `0` skips the 19 MB rail geometry |
+| `PUBLIC_URL` | — | pins the origin in the link-preview tags; derived from the request otherwise |
 
 ## Development
 
@@ -141,6 +143,27 @@ which it is rather than passing itself off as live:
 | `GET /api/trains?family=tgv&light=1` | filtered list |
 | `GET /api/rail.geojson` | in-service network, gzipped |
 | `GET /api/refresh` | force an upstream retry |
+
+## Links
+
+Any of these opens a train directly, so a link pasted into a message lands on
+it. The address bar is rewritten to the first form, which is what you get by
+copying it afterwards.
+
+```
+/train/8540              /t/8540
+/train/8540/carte        tabs: apercu trajet carte journal
+?train=8540&tab=carte    #8540      #train=8540
+```
+
+Tabs are also accepted by their English names (`overview`, `journey`, `map`,
+`log`), so a link shared from the English interface reads naturally.
+
+Link previews in WhatsApp, Signal, Slack and the rest come from the Open Graph
+tags. Those need an absolute URL for the image; it is taken from
+`X-Forwarded-Host`/`Host` per request, so a reverse proxy needs no extra
+configuration — set `PUBLIC_URL` to override. Re-run
+`python3 scripts/make-og-image.py` after changing the artwork.
 
 ## Notes
 

@@ -13,6 +13,7 @@ import { Bookmarks } from './core/Bookmarks.ts';
 import { Format } from './core/Format.ts';
 import { i18n, I18n, LOCALES, tr } from './core/I18n.ts';
 import { Prefs } from './core/Cache.ts';
+import { Router, type Route } from './core/Router.ts';
 import { Theme, type ThemeMode } from './core/Theme.ts';
 import { Alerts, Banner, Toast } from './components/Banner.ts';
 import { MapView, type MapMode } from './components/MapView.ts';
@@ -30,6 +31,16 @@ export class App {
   private readonly api = new Api();
   private readonly bookmarks = new Bookmarks();
   private readonly theme = new Theme();
+  private readonly router = new Router();
+  /**
+   * Whether the open modal has a history entry of its own.
+   *
+   * It does when the user opened it from the list, and does not when they
+   * arrived on a shared link — so closing it means Back in the first case and
+   * a plain rewrite to "/" in the second, which would otherwise walk them off
+   * the site.
+   */
+  private modalPushed = false;
   private readonly toast = new Toast(document.getElementById('toast')!);
   private readonly alerts = new Alerts(this.toast);
   private readonly banner = new Banner(document.getElementById('banner')!);
@@ -145,6 +156,43 @@ export class App {
     b.disabled = Alerts.granted;
   }
 
+  /** Open a train and give it a URL, so the page can be shared or reloaded. */
+  private openTrain(number: string, tab: ModalTab = 'apercu'): void {
+    this.router.go(number, tab === 'apercu' ? null : tab, 'push');
+    this.modalPushed = true;
+    void this.modal.open(number, tab);
+  }
+
+  private closeTrain(): void {
+    if (this.modalPushed) {
+      // Unwinds our own entry; the popstate that follows closes the modal.
+      this.modalPushed = false;
+      history.back();
+      return;
+    }
+    this.router.go(null, null, 'replace');
+    this.modal.close();
+  }
+
+  /**
+   * Bring the modal in line with the URL.
+   *
+   * Called for Back, Forward and the initial load, so it must never write to
+   * history itself — that is what closeTrain and openTrain are for.
+   */
+  private async applyRoute(route: Route): Promise<void> {
+    if (!route.train) {
+      this.modalPushed = false;
+      if (this.modal.openFor) this.modal.close();
+      return;
+    }
+    if (this.modal.openFor === route.train) {
+      if (route.tab && route.tab !== this.modal.activeTab) this.modal.setTab(route.tab);
+      return;
+    }
+    await this.modal.open(route.train, route.tab ?? 'apercu');
+  }
+
   private goto(view: ViewName): void {
     this.view = view;
     for (const b of document.querySelectorAll<HTMLElement>('.tab')) {
@@ -213,10 +261,10 @@ export class App {
 
     document.addEventListener('click', (e) => this.onClick(e));
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.modal.openFor) this.modal.close();
+      if (e.key === 'Escape' && this.modal.openFor) this.closeTrain();
       if (e.key === 'Enter' && (e.target as HTMLElement).id === 'searchInput') {
         const first = document.querySelector<HTMLElement>('#suggestList .sg');
-        if (first) void this.modal.open(first.dataset['open']!);
+        if (first) this.openTrain(first.dataset['open']!);
       }
     });
 
@@ -242,7 +290,13 @@ export class App {
     }
 
     const mtab = target.closest<HTMLElement>('[data-mtab]');
-    if (mtab) return this.modal.setTab(mtab.dataset['mtab'] as ModalTab);
+    if (mtab) {
+      const tab = mtab.dataset['mtab'] as ModalTab;
+      // Replace, not push: four tabs should not bury the previous page under
+      // four history entries.
+      if (this.modal.openFor) this.router.go(this.modal.openFor, tab, 'replace');
+      return this.modal.setTab(tab);
+    }
 
     const mapMode = target.closest<HTMLElement>('[data-mapmode]');
     if (mapMode) {
@@ -258,7 +312,7 @@ export class App {
       return;
     }
 
-    if (target.closest('[data-close]')) return this.modal.close();
+    if (target.closest('[data-close]')) return this.closeTrain();
 
     const go = target.closest<HTMLElement>('[data-goto]');
     if (go) return this.goto(go.dataset['goto'] as ViewName);
@@ -284,7 +338,7 @@ export class App {
     }
 
     const opener = target.closest<HTMLElement>('[data-open]');
-    if (opener) void this.modal.open(opener.dataset['open']!);
+    if (opener) this.openTrain(opener.dataset['open']!);
   }
 
   /**
@@ -339,7 +393,7 @@ export class App {
         setTimeout(() => {
           el.style.transform = '';
           el.style.transition = '';
-          this.modal.close();
+          this.closeTrain();
         }, 200);
       } else {
         el.style.transform = '';
@@ -402,6 +456,17 @@ export class App {
 
     void this.render();
     void this.primeCache();
+
+    // A shared link lands here: open its train straight away, and keep the
+    // modal in step with Back and Forward from then on.
+    this.router.onChange = (route) => void this.applyRoute(route);
+    const initial = Router.read();
+    if (initial.train) {
+      // Normalise whatever shape the link used into the canonical path, so
+      // copying the address bar afterwards yields a clean URL.
+      this.router.go(initial.train, initial.tab, 'replace');
+      void this.applyRoute(initial);
+    }
 
     // Countdown ticks every second without refetching — but not while hidden.
     setInterval(() => {

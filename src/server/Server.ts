@@ -16,7 +16,11 @@ const MIME: Readonly<Record<string, string>> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.png': 'image/png',
   '.json': 'application/json; charset=utf-8',
+  // Served with its own type so the browser treats it as a manifest; link
+  // preview crawlers likewise skip an image sent as octet-stream.
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
   '.map': 'application/json; charset=utf-8',
@@ -45,6 +49,12 @@ export class ApiServer {
 
   close(): Promise<void> {
     return new Promise((resolve) => this.server.close(() => resolve()));
+  }
+
+  /** The bound port — meaningful after listen(0), which the tests use. */
+  get port(): number {
+    const addr = this.server.address();
+    return typeof addr === 'object' && addr ? addr.port : 0;
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -204,6 +214,33 @@ export class ApiServer {
   }
 
   /**
+   * Absolute origin of this request, for the Open Graph tags.
+   *
+   * WhatsApp and the other link-preview crawlers reject a relative og:image,
+   * and the deployment host is not known at build time, so it is resolved per
+   * request. PUBLIC_URL wins when set; otherwise the proxy headers are used.
+   *
+   * The Host header is client-controlled and this value lands in an HTML
+   * attribute, so it is whitelisted rather than escaped: anything carrying a
+   * quote, space or angle bracket fails the test and yields no origin, which
+   * simply leaves the preview tags out.
+   */
+  private origin(req: IncomingMessage): string | null {
+    const configured = process.env.PUBLIC_URL?.trim();
+    if (configured) return configured.replace(/\/+$/, '');
+
+    const host = (req.headers['x-forwarded-host'] ?? req.headers.host ?? '')
+      .toString()
+      .split(',')[0]!
+      .trim();
+    if (!/^[a-zA-Z0-9.-]+(:\d{1,5})?$/.test(host)) return null;
+
+    const proto = (req.headers['x-forwarded-proto'] ?? '').toString().split(',')[0]!.trim();
+    const scheme = proto === 'https' || proto === 'http' ? proto : 'http';
+    return `${scheme}://${host}`;
+  }
+
+  /**
    * Static files, always revalidated.
    *
    * Shipping no cache headers leaves it to the browser's heuristics, and a
@@ -242,7 +279,20 @@ export class ApiServer {
         res.end();
         return;
       }
-      const buf = await readFile(file);
+      let buf = await readFile(file);
+      if (path.extname(file) === '.html') {
+        const origin = this.origin(req);
+        // Same bytes for the same host, so the ETag has to vary with it too.
+        headers.etag = `W/"${info.size.toString(36)}-${info.mtimeMs.toString(36)}-${
+          Buffer.from(origin ?? '').toString('base64url') || 'x'
+        }"`;
+        if (req.headers['if-none-match'] === headers.etag) {
+          res.writeHead(304, headers);
+          res.end();
+          return;
+        }
+        buf = Buffer.from(buf.toString('utf8').replaceAll('%ORIGIN%', origin ?? ''));
+      }
       res.writeHead(200, { ...headers, 'content-length': String(buf.length) });
       res.end(buf);
     } catch {
