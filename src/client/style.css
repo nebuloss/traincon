@@ -345,7 +345,11 @@ button.primary:active { transform: translateY(1px); }
   box-shadow: none;
   border-style: dashed;
   background: color-mix(in srgb, var(--panel) 70%, var(--bg));
+  /* Nothing to open, so the card must not offer itself: no hand cursor and no
+     press feedback. The star and the remove button keep their own. */
+  cursor: default;
 }
+.card.is-missing:active { background: color-mix(in srgb, var(--panel) 70%, var(--bg)); }
 .card.is-missing .cd-num {
   text-decoration: line-through;
   text-decoration-thickness: 2px;
@@ -361,8 +365,8 @@ button.primary:active { transform: translateY(1px); }
 .card.is-unknown {
   border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
   background: color-mix(in srgb, var(--bad) 7%, var(--panel));
-  cursor: default;
 }
+.card.is-unknown:active { background: color-mix(in srgb, var(--bad) 7%, var(--panel)); }
 .card.is-unknown .cd-num { text-decoration-color: var(--bad); }
 
 .missing-tag {

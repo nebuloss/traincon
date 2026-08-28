@@ -9,6 +9,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -127,4 +128,36 @@ test('an older server without the field is read from its timetable entry', () =>
     'dormant',
   );
   assert.equal(missingKind({ knownSchedule: null }), 'unknown');
+});
+
+
+// ── a card that does nothing must not look like it does ──────────────────────
+
+test('the missing-bookmark card offers no click affordance', async () => {
+  // Twice now the card stopped opening but still advertised that it would:
+  // first a data-open that no longer had a modal behind it, then the hand
+  // cursor .card sets for every card. Both are checked here.
+  const view = await readFile(path.join(ROOT, 'src/client/views/WatchView.ts'), 'utf8');
+  const css = await readFile(path.join(ROOT, 'src/client/style.css'), 'utf8');
+
+  const body = view.slice(view.indexOf('private static missingCard'));
+  const card = body.slice(0, body.indexOf('\n  }\n'));
+
+  assert.ok(!card.includes("dataset['open']"), 'a missing card must not open the modal');
+  assert.ok(!card.includes('role="button"'), 'nor announce itself as a button');
+  assert.ok(!card.includes('tabIndex'), 'nor take focus as one');
+
+  // .card sets cursor:pointer for every card, so the missing variant has to
+  // turn it back off explicitly.
+  const rule = css.slice(css.indexOf('.card.is-missing {'));
+  assert.match(rule.slice(0, rule.indexOf('}')), /cursor:\s*default/);
+});
+
+test('the actions inside it are still clickable', async () => {
+  const css = await readFile(path.join(ROOT, 'src/client/style.css'), 'utf8');
+  // Making the card inert must not disarm the star or the remove button.
+  for (const sel of ['.star {', '.link-btn {']) {
+    const rule = css.slice(css.indexOf(sel));
+    assert.match(rule.slice(0, rule.indexOf('}')), /cursor:\s*pointer/, `${sel} needs a pointer`);
+  }
 });
