@@ -11,8 +11,9 @@ import { tr } from '../core/I18n.ts';
 import { Timeline } from './Timeline.ts';
 import { starButton } from './TrainCard.ts';
 import { MapView, type MapMode } from './MapView.ts';
+import { missingKind } from '../../shared/missing.ts';
 import type { Api } from '../core/Api.ts';
-import type { Confidence, TrainDTO } from '../../shared/types.ts';
+import type { Confidence, MissingReason, TrainDTO } from '../../shared/types.ts';
 
 export type ModalTab = 'apercu' | 'trajet' | 'carte' | 'journal';
 
@@ -43,6 +44,16 @@ function jlRow(key: string, main: string, meta = '', tone = ''): string {
 
 export class TrainModal {
   private current: string | null = null;
+  /**
+   * Whether this train has ever rendered since the modal was opened.
+   *
+   * A train that leaves the feed while you are watching it — because it has
+   * arrived — must not slam the modal shut; only one that was never there
+   * should refuse to open.
+   */
+  private everFound = false;
+  /** Called when a train turns out not to exist, so the caller can react. */
+  onMissing: (number: string, reason: MissingReason) => void = () => {};
   private tab: ModalTab = 'apercu';
   private mapReframe = false;
 
@@ -62,6 +73,7 @@ export class TrainModal {
 
   async open(number: string, tab: ModalTab = 'apercu'): Promise<void> {
     this.current = number;
+    this.everFound = false;
     document.getElementById('modal')!.hidden = false;
     document.body.style.overflow = 'hidden';
     document.getElementById('modalHead')!.innerHTML =
@@ -100,15 +112,18 @@ export class TrainModal {
     const d = await this.api.train(num);
 
     if (!d.found) {
-      document.getElementById('modalHead')!.innerHTML = `
-        <div class="m-title" id="modalTitle">${starButton(num, this.isWatched)}<span>${Format.esc(num)}</span></div>
-        <div class="m-od">${Format.esc(d.message)}</div>
-        ${d.knownSchedule?.line ? `<div class="m-line">${Format.esc(d.knownSchedule.line)}</div>` : ''}`;
-      document.getElementById('mpanel-apercu')!.innerHTML = '';
-      document.getElementById('mpanel-trajet')!.innerHTML = '';
-      document.getElementById('mpanel-journal')!.innerHTML = '';
+      // Never opened on this train: there is nothing to show but four empty
+      // tabs and an error, so hand it back to the caller and close.
+      if (!this.everFound) {
+        this.close();
+        this.onMissing(num, missingKind(d));
+        return;
+      }
+      // It was here a moment ago and has now left the feed — most likely it
+      // arrived. Leave the last good render on screen rather than blanking it.
       return;
     }
+    this.everFound = true;
 
     const t = d.trains[0]!;
     this.renderHead(t);

@@ -118,6 +118,8 @@ const FR: Dict = {
   'mtab.map': 'Carte',
   'mtab.journal': 'Journal',
   'modal.detail': 'Détail du train',
+  'modal.unknown': 'Le train {n} n’existe pas.',
+  'modal.dormant': 'Le train {n} ne circule pas actuellement.',
   'modal.loading': 'Chargement…',
 
   'ov.terminus': 'Terminus',
@@ -329,6 +331,8 @@ const EN: Dict = {
   'mtab.map': 'Map',
   'mtab.journal': 'Log',
   'modal.detail': 'Train detail',
+  'modal.unknown': 'Train {n} does not exist.',
+  'modal.dormant': 'Train {n} is not running right now.',
   'modal.loading': 'Loading…',
 
   'ov.terminus': 'Terminus',

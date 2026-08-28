@@ -478,6 +478,15 @@ export class App {
     // A shared link lands here: open its train straight away, and keep the
     // modal in step with Back and Forward from then on.
     this.router.onChange = (route) => void this.applyRoute(route);
+
+    // A link to a train that is not running — or never existed — must not leave
+    // a broken modal on screen. The modal closes itself; say why, and put the
+    // address bar back on the tab the reader is actually looking at.
+    this.modal.onMissing = (number, reason) => {
+      this.modalPushed = false;
+      this.router.goView(this.view, 'replace');
+      this.toast.show(tr(reason === 'unknown' ? 'modal.unknown' : 'modal.dormant', { n: number }));
+    };
     const initial = Router.read();
     if (initial.train) {
       // Normalise whatever shape the link used into the canonical path, so

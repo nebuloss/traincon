@@ -102,3 +102,29 @@ test('the server names the two kinds of miss', async () => {
     await server.close();
   }
 });
+
+
+// ── telling the two kinds of miss apart ──────────────────────────────────────
+
+const { missingKind } = await import(path.join(ROOT, 'src/shared/missing.ts'));
+
+test('a train in the timetable but not running is dormant', () => {
+  assert.equal(
+    missingKind({ reason: 'dormant', knownSchedule: { number: '8081', service: 'OUI', line: 'x' } }),
+    'dormant',
+  );
+});
+
+test('a number that is nowhere is unknown', () => {
+  assert.equal(missingKind({ reason: 'unknown', knownSchedule: null }), 'unknown');
+});
+
+test('an older server without the field is read from its timetable entry', () => {
+  // Guessing "unknown" for a real train would invite deleting a good bookmark,
+  // so a known schedule wins when the field is absent.
+  assert.equal(
+    missingKind({ knownSchedule: { number: '8081', service: 'OUI', line: 'x' } }),
+    'dormant',
+  );
+  assert.equal(missingKind({ knownSchedule: null }), 'unknown');
+});

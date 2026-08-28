@@ -9,18 +9,8 @@ import { TrainCard, starButton } from '../components/TrainCard.ts';
 import type { Alerts } from '../components/Banner.ts';
 import type { Api } from '../core/Api.ts';
 import type { Bookmarks } from '../core/Bookmarks.ts';
-import type { MissingReason, TrainDTO, TrainNotFound } from '../../shared/types.ts';
-
-/**
- * Which kind of miss this is.
- *
- * Older servers predate the `reason` field, so a known timetable entry is
- * taken as dormant — the safe reading, since calling a real train "unknown"
- * would invite the user to delete a bookmark that is fine.
- */
-export function missingKind(res: Pick<TrainNotFound, 'reason' | 'knownSchedule'>): MissingReason {
-  return res.reason ?? (res.knownSchedule ? 'dormant' : 'unknown');
-}
+import { missingKind } from '../../shared/missing.ts';
+import type { TrainDTO, TrainNotFound } from '../../shared/types.ts';
 
 export class WatchView {
   constructor(
@@ -98,9 +88,8 @@ export class WatchView {
 
     const el = document.createElement('article');
     el.className = `card is-missing ${unknown ? 'is-unknown' : 'is-dormant'}`;
-    // An unknown number has nothing to open; a dormant one still has a
-    // timetable entry worth showing.
-    if (!unknown) el.dataset['open'] = num;
+    // No data-open on either: there is no train behind these, so the modal
+    // would open on four empty tabs. The card already says everything known.
 
     const line = res.knownSchedule?.line;
     el.innerHTML = `
