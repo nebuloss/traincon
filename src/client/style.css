@@ -314,42 +314,13 @@ button.primary:active { transform: translateY(1px); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* the compact bar: dots only, never labels */
-.mp { position: relative; height: 22px; margin: 11px 8px 9px 12px; }
-.mp-rail {
-  position: absolute; left: 0; right: 0; top: 9px; height: 3px;
-  background: var(--line); border-radius: 2px;
-}
-.mp-fill {
-  position: absolute; left: 0; top: 9px; height: 3px;
-  background: var(--accent); border-radius: 2px; transition: width .8s ease;
-}
-.mp-dot {
-  position: absolute; top: 6px; width: 9px; height: 9px; margin-left: -4.5px;
-  border-radius: 50%; background: var(--panel);
-  border: 2px solid var(--line); box-sizing: border-box;
-}
-.mp-dot.done { border-color: var(--accent); background: var(--accent); }
-.mp-dot.end { width: 11px; height: 11px; top: 5px; margin-left: -5.5px; }
-.mp-dot.skip { border-color: var(--bad); background: var(--panel); }
-.mp-train {
-  position: absolute; top: -2px; margin-left: -9px; font-size: 15px; line-height: 1;
-  z-index: 2; transition: left .8s ease;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35));
-}
-.mp-train.at-stop { animation: pulse 1.9s ease-in-out infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
-@media (prefers-reduced-motion: reduce) {
-  .mp-fill, .mp-train { transition: none; }
-  .mp-train.at-stop { animation: none; }
-}
-
 .cd-foot {
   display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-  padding-left: 8px; font-size: 13px;
+  padding-left: 8px; margin-top: 7px; font-size: 13px;
 }
+/* Where the train is, in words — the line this card exists for. */
 .cd-where {
-  color: var(--fg); min-width: 0; overflow: hidden;
+  color: var(--fg); font-weight: 600; min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap;
 }
 .cd-next { margin-left: auto; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -462,12 +433,31 @@ button.primary:active { transform: translateY(1px); }
   width: 2px; margin-left: -1px; background: var(--accent);
   border-radius: 2px; transition: height .8s ease;
 }
+/*
+ * The "you are here" marker.
+ *
+ * A bare emoji on the rail reads fine on a phone and disappears on a desktop
+ * modal, where everything around it is bigger. Giving it a disc and a ring
+ * makes it a marker rather than a character, and it scales with the viewport.
+ */
 .tl-train {
   position: absolute; left: calc(var(--gutter) / 2); margin-top: 6px;
   transform: translate(-50%, -50%);
-  font-size: 17px; line-height: 1; z-index: 3;
+  z-index: 3;
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  font-size: 16px; line-height: 1;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 2.5px solid var(--accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
   transition: top .8s ease;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .4));
+}
+@media (min-width: 700px) {
+  .tl-train { width: 38px; height: 38px; font-size: 21px; border-width: 3px; }
+  /* The marker is centred on the gutter, so the gutter has to hold it. */
+  .tl { --gutter: 46px; }
+  .tl-dot { width: 12px; height: 12px; }
 }
 .tl-train.at-stop { animation: pulse 1.9s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }

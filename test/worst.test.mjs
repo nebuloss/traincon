@@ -137,6 +137,12 @@ test("yesterday's board is not shown as today's", async () => {
   }
 });
 
+test('the day is ISO, whatever ICU data the host shipped', () => {
+  // Alpine's Node falls back to en-US, which gave "8/28/2026" in production
+  // while dev produced the ISO form.
+  assert.match(DailyBoard.today(new Date('2026-08-28T09:00:00Z')), /^\d{4}-\d{2}-\d{2}$/);
+});
+
 test('the Paris day is what defines "today"', () => {
   // 22:30 UTC on the 27th is already the 28th in Paris, and the timetable's
   // day is the local one.

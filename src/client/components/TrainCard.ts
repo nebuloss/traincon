@@ -1,58 +1,16 @@
 /**
  * A bookmarked train, built for scanning a list rather than reading one train
- * in depth — that is what the modal is for. One bar, one line of state, one
- * arrival time.
+ * in depth — that is what the modal is for.
+ *
+ * The state is a sentence — "En gare de Bordeaux Saint-Jean", "Entre Dax et
+ * Bordeaux" — because that is the thing you actually want to know at a glance.
+ * A progress bar looks informative and says less: it cannot name the stations
+ * without labels, and with labels it stops being compact.
  */
 
 import { Format, statusSentence } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
 import type { TrainDTO } from '../../shared/types.ts';
-
-/**
- * Compact progress bar.
- *
- * Horizontal works here precisely because there are no station names: just
- * dots, a filled portion and the train. The vertical timeline exists because
- * *labels* collide, and this carries none — so several trains can be compared
- * at a glance instead of scrolling through a full timeline each.
- */
-export class MiniProgress {
-  constructor(private readonly train: TrainDTO) {}
-
-  render(now = Math.floor(Date.now() / 1000)): string {
-    const { calls, position: p } = this.train;
-    const n = calls.length;
-    if (n < 2) return '';
-
-    let pos: number;
-    if (p.basis === 'arrived') pos = n - 1;
-    else if (p.basis === 'at_station' || p.basis === 'not_departed') {
-      const at = calls.findIndex((c) => c.name === p.atStation);
-      pos = at >= 0 ? at : 0;
-    } else {
-      const from = calls.findIndex((c) => c.name === p.fromStop);
-      pos = (from >= 0 ? from : 0) + (p.legProgress ?? 0);
-    }
-
-    const pct = Math.min(100, Math.max(0, (pos / (n - 1)) * 100));
-    const atStop = p.basis !== 'between';
-    const dots = calls
-      .map((c, i) => {
-        const cls = [c.time <= now ? 'done' : '', i === n - 1 ? 'end' : '', c.skipped ? 'skip' : '']
-          .filter(Boolean)
-          .join(' ');
-        return `<i class="mp-dot ${cls}" style="left:${(i / (n - 1)) * 100}%" title="${Format.esc(c.name)}"></i>`;
-      })
-      .join('');
-
-    return `<div class="mp" aria-hidden="true">
-      <div class="mp-rail"></div>
-      <div class="mp-fill" style="width:${pct}%"></div>
-      ${dots}
-      <span class="mp-train${atStop ? ' at-stop' : ''}" style="left:${pct}%">🚆</span>
-    </div>`;
-  }
-}
 
 /** The star, which may carry several numbers for a coupled set. */
 export function starButton(spec: string, isWatched: (n: string) => boolean): string {
@@ -98,7 +56,6 @@ export class TrainCard {
         }</span>
       </div>
       <div class="cd-od">${Format.esc(t.origin)} → ${Format.esc(t.destination)}</div>
-      ${new MiniProgress(t).render()}
       <div class="cd-foot">
         <span class="cd-where">${Format.esc(st.main)}</span>
         ${

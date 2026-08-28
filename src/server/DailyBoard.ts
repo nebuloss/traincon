@@ -47,10 +47,19 @@ export class DailyBoard {
   /**
    * Today's date in Paris, as YYYY-MM-DD.
    *
-   * en-CA gives ISO order directly, which avoids reassembling parts by hand.
+   * Assembled from parts rather than asking a locale for ISO order: Alpine's
+   * Node is built with reduced ICU data, so 'en-CA' falls back to en-US and
+   * this returned "8/28/2026" in production while being correct on dev.
    */
   static today(now = new Date()): string {
-    return now.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Paris',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now);
+    const part = (type: string): string => parts.find((p) => p.type === type)?.value ?? '';
+    return `${part('year')}-${part('month')}-${part('day')}`;
   }
 
   async load(): Promise<void> {
