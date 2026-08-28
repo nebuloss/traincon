@@ -186,6 +186,11 @@ export class ApiServer {
       this.json(res, { feedTs: this.store.feedTs, trains: list });
     });
 
+    this.routes.set('/api/worst', (_req, res, url) => {
+      const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 25));
+      this.json(res, this.store.worst(limit));
+    });
+
     this.routes.set('/api/suggest', (_req, res, url) => {
       this.json(
         res,

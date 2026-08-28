@@ -15,6 +15,8 @@ import { FeedClient, type RawTrain } from './FeedClient.ts';
 import { RailGraph } from './RailGraph.ts';
 import { Train } from './Train.ts';
 import { CouplingDetector, type CouplingResult } from './CouplingDetector.ts';
+import { DailyBoard } from './DailyBoard.ts';
+import { Disruptions } from './Disruptions.ts';
 import type {
   DelaySample,
   Family,
@@ -23,6 +25,7 @@ import type {
   SuggestionDTO,
   TrainDTO,
   Trend,
+  WorstBoardDTO,
 } from '../shared/types.ts';
 
 const POLL_MS = 60_000;
@@ -42,6 +45,8 @@ export class TrainStore {
   private rail: RailGraph | null = null;
   private readonly feed: FeedClient;
   private readonly coupling = new CouplingDetector();
+  private readonly disruptions = new Disruptions();
+  private readonly board: DailyBoard;
 
   private trains: Train[] = [];
   private byNumber = new Map<string, Train[]>();
@@ -66,6 +71,7 @@ export class TrainStore {
 
   constructor(private readonly dataDir = 'data') {
     this.feed = new FeedClient();
+    this.board = new DailyBoard(dataDir);
   }
 
   get stations(): GtfsStatic {
@@ -74,6 +80,10 @@ export class TrainStore {
 
   async start(): Promise<void> {
     this.statics = await GtfsStatic.load(this.dataDir);
+    await this.board.load();
+    // Optional and key-gated: without one the board still ranks, it just
+    // cannot say why.
+    this.disruptions.start();
     try {
       this.rail = await RailGraph.load(this.dataDir);
       if (this.rail.display) {
@@ -111,6 +121,7 @@ export class TrainStore {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    this.disruptions.stop();
   }
 
   async refresh(): Promise<void> {
@@ -150,6 +161,11 @@ export class TrainStore {
     }
 
     this.couples = this.coupling.detect(this.trains, now, this.rail);
+
+    // Record the day's worst before pruning drops anything.
+    this.board.observe(this.list(), now);
+    void this.board.save().catch(() => undefined);
+
     this.prune();
     void this.saveSnapshot().catch(() => undefined);
   }
@@ -398,6 +414,19 @@ export class TrainStore {
    * Full journey as drawable geometry: the track-following polyline for every
    * leg, plus the stops.
    */
+  /** The day's worst delays, with a cause where the feed gives one. */
+  worst(limit = 25): WorstBoardDTO {
+    const live = new Set(this.trains.map((t) => t.number));
+    return {
+      day: this.board.day_,
+      reasonsAvailable: this.disruptions.enabled,
+      trains: this.board.top(limit, {
+        live: (n) => live.has(n),
+        reason: (n) => this.disruptions.get(n)?.reason ?? null,
+      }),
+    };
+  }
+
   journeyGeo(train: TrainDTO): JourneyGeo {
     const coords: [number, number][] = [];
     let covered = 0;

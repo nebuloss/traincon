@@ -253,3 +253,29 @@ export type JourneyStop = Feature<
 export type JourneyGeo = FeatureCollection<JourneyLine | JourneyStop>;
 
 export type RailGeo = FeatureCollection<Feature<LineStringGeom, { v: number; hs: 0 | 1 }>>;
+
+/** One line of the day's worst-delays board. */
+export interface WorstTrainDTO {
+  number: string;
+  serviceLabel: string;
+  family: Family;
+  origin: string;
+  destination: string;
+  /** Worst delay recorded today, in seconds. */
+  delay: number;
+  /** When that peak was recorded, epoch seconds. */
+  at: number;
+  cancelled: boolean;
+  /** Still in the live feed, so the modal can show it moving. */
+  live: boolean;
+  /** Cause as SNCF words it, when the disruption feed names one. */
+  reason: string | null;
+}
+
+export interface WorstBoardDTO {
+  /** The Paris day these records belong to, YYYY-MM-DD. */
+  day: string;
+  trains: WorstTrainDTO[];
+  /** False when no API key is configured, so the UI can explain the gap. */
+  reasonsAvailable: boolean;
+}

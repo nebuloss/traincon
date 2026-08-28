@@ -125,6 +125,14 @@
     <p id="searchHint" class="hint"></p>
   </section>
 
+  <!-- ============ PALMARES ============ -->
+  <section id="view-worst" class="view" aria-label="Palmarès des retards">
+    <h2 class="view-title" data-i18n="worst.title">Palmarès du jour</h2>
+    <p class="hint" id="worstNote"></p>
+    <ul id="worstList" class="suggest-list" role="listbox" data-i18n-aria="worst.title"
+        aria-label="Trains les plus en retard"></ul>
+  </section>
+
 </main>
 
 <nav class="tabbar" role="tablist" aria-label="Navigation">
@@ -133,6 +141,9 @@
   </button>
   <button class="tab" data-view="search" role="tab" aria-selected="false">
     <span class="ic" aria-hidden="true">🔍</span><span data-i18n="tab.search">Recherche</span>
+  </button>
+  <button class="tab" data-view="worst" role="tab" aria-selected="false">
+    <span class="ic" aria-hidden="true">🐌</span><span data-i18n="tab.worst">Palmarès</span>
   </button>
 </nav>
 

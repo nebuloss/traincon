@@ -9,7 +9,7 @@
 
 import { Format } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
-import { starButton } from '../components/TrainCard.ts';
+import { trainRow } from '../components/TrainRow.ts';
 import type { Api } from '../core/Api.ts';
 import type { Bookmarks } from '../core/Bookmarks.ts';
 import type { SuggestionDTO } from '../../shared/types.ts';
@@ -43,28 +43,14 @@ export class SearchView {
   }
 
   private row(r: SuggestionDTO): string {
-    const tier = Format.delayTier(r.delay, r.cancelled);
-    return `<li role="option" class="sg-row">
-      ${starButton(r.number, (n) => this.bookmarks.has(n))}
-      <button class="sg" data-open="${Format.esc(r.number)}">
-        <div class="sg-main">
-          <div class="sg-top">
-            <span class="badge ${r.family}">${Format.esc(r.serviceLabel)}</span>
-            <span class="sg-num">${Format.esc([r.number, ...r.coupledWith].join(' + '))}</span>
-            ${r.coupledWith.length ? '<span class="um-tag">UM</span>' : ''}
-          </div>
-          <div class="sg-od">${Format.esc(r.origin)} → ${Format.esc(r.destination)}</div>
-          <div class="sg-why">${Format.esc(SearchView.reason(r.why))}${
-            r.next
-              ? ` · ${Format.esc(tr('search.nextStop', { stop: r.next.name, time: Format.hhmm(r.next.time) }))}`
-              : ''
-          }</div>
-        </div>
-        <div class="sg-delay ${tier}">${
-          r.cancelled ? Format.esc(tr('delay.cancelled')) : Format.delay(r.delay)
-        }</div>
-      </button>
-    </li>`;
+    const why = Format.esc(SearchView.reason(r.why));
+    const next = r.next
+      ? ` · ${Format.esc(tr('search.nextStop', { stop: r.next.name, time: Format.hhmm(r.next.time) }))}`
+      : '';
+    return trainRow(r, {
+      detail: why + next,
+      isWatched: (n) => this.bookmarks.has(n),
+    });
   }
 
   async render(feedDown = false): Promise<void> {

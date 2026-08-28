@@ -271,6 +271,23 @@ button.primary:active { transform: translateY(1px); }
 .sg-why { color: var(--dead); font-size: 11.5px; margin-top: 1px; }
 .sg-delay { flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 600; }
 
+/* ---------- hall of shame ---------- */
+.view-title { font-size: 17px; margin: 2px 0 6px; }
+/* Tabular so the ranks line up as the numbers reach two digits. */
+.rank {
+  flex: 0 0 auto; width: 22px; text-align: right;
+  font-size: 12px; font-weight: 700; color: var(--dead);
+  font-variant-numeric: tabular-nums;
+}
+/* The board keeps trains that have finished, so mark the ones still moving. */
+.live-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: 2px 6px;
+  border-radius: 5px; background: color-mix(in srgb, var(--ok) 20%, transparent);
+  color: var(--ok); white-space: nowrap;
+}
+.empty-row { padding: 22px 14px; text-align: center; color: var(--muted); }
+.sg-why .muted { color: var(--dead); font-style: italic; }
+
 /* ---------------------------------------------------------------
    Bookmark cards
    Built for scanning several trains at once, not for reading one in

@@ -411,9 +411,26 @@ heap_limit() {
   echo "$heap"
 }
 
+# The key already stored by a previous install, if any.
+#
+# .env is rewritten wholesale below, so without this an update would silently
+# drop a key configured months ago — and the only visible symptom would be the
+# delay reasons quietly going blank.
+stored_api_key() {
+  [ -f "$APP_DIR/.env" ] || return 0
+  sed -n 's/^SNCF_API_KEY=\(.*\)$/\1/p' "$APP_DIR/.env" | head -1
+}
+
 write_env() {
   heap="$(heap_limit)"
   info "Heap ceiling: ${heap} MB"
+
+  if [ -z "$SNCF_API_KEY" ]; then
+    SNCF_API_KEY="$(stored_api_key)"
+    if [ -n "$SNCF_API_KEY" ]; then
+      info "Keeping the SNCF API key already configured"
+    fi
+  fi
 
   # The key, when present, goes in a root-owned file the service reads — not
   # on the command line, where `ps` or /proc/<pid>/environ would show it.

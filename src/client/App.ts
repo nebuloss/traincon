@@ -19,9 +19,10 @@ import { Alerts, Banner, Toast } from './components/Banner.ts';
 import { MapView, type MapMode } from './components/MapView.ts';
 import { TrainModal, type ModalTab } from './components/TrainModal.ts';
 import { SearchView } from './views/SearchView.ts';
+import { WorstView } from './views/WorstView.ts';
 import { WatchView } from './views/WatchView.ts';
 
-type ViewName = 'watch' | 'search';
+type ViewName = 'watch' | 'search' | 'worst';
 
 const REFRESH_MS = 30_000;
 /** How stale the data must be before a wake-up bothers refetching. */
@@ -48,6 +49,7 @@ export class App {
   private readonly modal: TrainModal;
   private readonly watchView: WatchView;
   private readonly searchView: SearchView;
+  private readonly worstView: WorstView;
 
   private view: ViewName = 'watch';
   private mapMode: MapMode = Prefs.get<MapMode>('mapMode', 'train');
@@ -64,6 +66,7 @@ export class App {
     );
     this.watchView = new WatchView(this.api, this.bookmarks, this.alerts);
     this.searchView = new SearchView(this.api, this.bookmarks);
+    this.worstView = new WorstView(this.api, this.bookmarks);
   }
 
   // ── language ───────────────────────────────────────────────────────────────
@@ -140,6 +143,7 @@ export class App {
     this.rendering = true;
     try {
       if (this.view === 'watch') await this.watchView.render(this.feedDown);
+      else if (this.view === 'worst') await this.worstView.render();
       else await this.searchView.render(this.feedDown);
       if (this.modal.openFor) await this.modal.refresh();
     } catch (e) {

@@ -16,6 +16,7 @@ import type {
   TrainDTO,
   TrainLightDTO,
   TrainResponse,
+  WorstBoardDTO,
 } from '../../shared/types.ts';
 
 export interface Family {
@@ -75,6 +76,10 @@ export class Api {
     const rows = await this.get<SuggestionDTO[]>(path);
     if (!Array.isArray(rows)) throw new Error(tr('error.badResponse'));
     return { rows, path };
+  }
+
+  worst(limit = 25): Promise<WorstBoardDTO> {
+    return this.get<WorstBoardDTO>(`/api/worst?limit=${limit}`);
   }
 
   stations(q: string, limit = 12): Promise<StationDTO[]> {

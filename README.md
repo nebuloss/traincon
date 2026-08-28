@@ -23,6 +23,7 @@ Interface in French and English, light and dark themes, mobile-first.
 - **Map** — the train projected onto the actual track, zoomed to match its speed
 - **Log** — how much the current estimate can be trusted, and what has changed
 - **Shareable links** — `/train/8540` opens straight on that train
+- **Hall of shame** — the day's worst delays, with SNCF's own stated reason
 
 ## What the data can and cannot tell you
 
@@ -142,8 +143,34 @@ which it is rather than passing itself off as live:
 | `GET /api/train/:number` | one train, all its calls |
 | `GET /api/train/:number/path` | its route as GeoJSON |
 | `GET /api/trains?family=tgv&light=1` | filtered list |
+| `GET /api/worst?limit=25` | the day's worst delays, with reasons |
 | `GET /api/rail.geojson` | in-service network, gzipped |
 | `GET /api/refresh` | force an upstream retry |
+
+## Delay reasons
+
+GTFS-RT carries delays but never says why. The cause comes from the SNCF
+(Navitia) disruption feed, which publishes a plain-French message per affected
+journey — *Obstacle sur la voie*, *Défaillance de matériel*, *Réutilisation
+d'un train* — keyed by train number.
+
+This needs `SNCF_API_KEY`; without one the board still ranks, it just cannot
+say why. Measured coverage is about **72%** of trains more than ten minutes
+down, and 19 of a given day's worst 20.
+
+Two design notes worth knowing before changing it:
+
+- **The whole disruption list is swept and indexed, rather than queried per
+  train.** Filtering `vehicle_journeys` by `has_headsign` looks like the
+  obvious approach and does not work — it returns unrelated coach services,
+  and scored 0 hits on 20 known-delayed trains.
+- **The free key allows 5 000 requests a day.** A full sweep is ~18 pages, so
+  the 15-minute cycle costs ~1 700 a day.
+
+The board itself is kept separately from the live store, which prunes trains
+two hours after they leave the feed — by evening the morning's worst would
+otherwise be gone. It records a high-water mark per train, persists to
+`data/daily-board.json`, and resets when the Paris day rolls over.
 
 ## Links
 

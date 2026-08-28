@@ -1,0 +1,252 @@
+// The day's worst-delays board, and the reasons attached to it.
+//
+// Two things here are easy to get wrong and invisible when they are: the board
+// must remember a train's *peak* delay rather than its current one (a train
+// that made up an hour still had that hour), and it must forget everything
+// when the Paris day rolls over rather than carrying yesterday's disasters
+// into this morning.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const { DailyBoard } = await import(path.join(ROOT, 'dist-server/server/DailyBoard.js'));
+const { Disruptions } = await import(path.join(ROOT, 'dist-server/server/Disruptions.js'));
+
+/** A TrainDTO with only the fields the board reads. */
+const train = (number, worstDelay, extra = {}) => ({
+  number,
+  serviceLabel: 'TGV INOUI',
+  family: 'tgv',
+  origin: 'Hendaye',
+  destination: 'Paris Montparnasse',
+  worstDelay,
+  cancelled: false,
+  ...extra,
+});
+
+const NONE = { live: () => false, reason: () => null };
+
+async function board() {
+  const dir = await mkdtemp(path.join(tmpdir(), 'traincon-'));
+  const b = new DailyBoard(dir);
+  await b.load();
+  return { b, dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+test('the board records the peak delay, not the current one', async () => {
+  const { b, cleanup } = await board();
+  try {
+    b.observe([train('8540', 90 * 60)]);
+    // The train makes up an hour; it was still 90 minutes down today.
+    b.observe([train('8540', 30 * 60)]);
+    assert.equal(b.top(5, NONE)[0].delay, 90 * 60);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('trains below the threshold never reach the board', async () => {
+  const { b, cleanup } = await board();
+  try {
+    b.observe([train('1', 5 * 60), train('2', 11 * 60)]);
+    assert.deepEqual(b.top(5, NONE).map((t) => t.number), ['2']);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('a cancelled train belongs there whatever its delay says', async () => {
+  const { b, cleanup } = await board();
+  try {
+    b.observe([train('9', 0, { cancelled: true })]);
+    const [row] = b.top(5, NONE);
+    assert.equal(row.number, '9');
+    assert.equal(row.cancelled, true);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('ranking is worst first', async () => {
+  const { b, cleanup } = await board();
+  try {
+    b.observe([train('a', 20 * 60), train('b', 200 * 60), train('c', 60 * 60)]);
+    assert.deepEqual(b.top(5, NONE).map((t) => t.number), ['b', 'c', 'a']);
+    assert.equal(b.top(2, NONE).length, 2, 'limit is honoured');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('live and reason are filled from the caller', async () => {
+  const { b, cleanup } = await board();
+  try {
+    b.observe([train('8540', 90 * 60)]);
+    const [row] = b.top(5, {
+      live: (n) => n === '8540',
+      reason: (n) => (n === '8540' ? 'Obstacle sur la voie' : null),
+    });
+    assert.equal(row.live, true);
+    assert.equal(row.reason, 'Obstacle sur la voie');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('the board survives a restart within the same day', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'traincon-'));
+  try {
+    const first = new DailyBoard(dir);
+    await first.load();
+    first.observe([train('8540', 90 * 60)]);
+    await first.save();
+
+    // A restart mid-afternoon must not lose the morning.
+    const second = new DailyBoard(dir);
+    await second.load();
+    assert.equal(second.top(5, NONE)[0].delay, 90 * 60);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("yesterday's board is not shown as today's", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'traincon-'));
+  try {
+    const first = new DailyBoard(dir);
+    await first.load();
+    first.observe([train('8540', 90 * 60)]);
+    await first.save();
+
+    // Rewrite the stored day as the past, as an overnight restart would find it.
+    const file = path.join(dir, 'daily-board.json');
+    const saved = JSON.parse(await readFile(file, 'utf8'));
+    saved.day = '2020-01-01';
+    await (await import('node:fs/promises')).writeFile(file, JSON.stringify(saved));
+
+    const second = new DailyBoard(dir);
+    await second.load();
+    assert.equal(second.top(5, NONE).length, 0, 'a new day starts empty');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('the Paris day is what defines "today"', () => {
+  // 22:30 UTC on the 27th is already the 28th in Paris, and the timetable's
+  // day is the local one.
+  assert.equal(DailyBoard.today(new Date('2026-08-27T22:30:00Z')), '2026-08-28');
+  assert.equal(DailyBoard.today(new Date('2026-08-28T09:00:00Z')), '2026-08-28');
+});
+
+// ── reasons ──────────────────────────────────────────────────────────────────
+
+/** One Navitia page, in the shape the real API returns. */
+const page = (items) => ({
+  json: async () => ({ disruptions: items }),
+  ok: true,
+  status: 200,
+});
+
+const disruption = (number, text, effect = 'SIGNIFICANT_DELAYS') => ({
+  severity: { effect },
+  messages: [{ text }],
+  impacted_objects: [{ pt_object: { trip: { name: number } } }],
+});
+
+test('without a key the index stays empty and nothing breaks', async () => {
+  const d = new Disruptions(null);
+  assert.equal(d.enabled, false);
+  await d.refresh();
+  assert.equal(d.get('8540'), null);
+  assert.equal(d.size, 0);
+});
+
+test('disruptions are indexed by train number', async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return calls === 1
+      ? page([disruption('8540', 'Obstacle sur la voie')])
+      : page([]); // second page empty, ends the sweep
+  };
+  try {
+    const d = new Disruptions('key');
+    await d.refresh();
+    assert.equal(d.get('8540').reason, 'Obstacle sur la voie');
+    assert.equal(d.get('8540').effect, 'SIGNIFICANT_DELAYS');
+    assert.equal(d.get('9999'), null);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('a per-stop cause is used when there is no headline message', async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return calls === 1
+      ? page([
+          {
+            severity: { effect: 'SIGNIFICANT_DELAYS' },
+            messages: [],
+            impacted_objects: [
+              {
+                pt_object: { trip: { name: '123' } },
+                impacted_stops: [{ cause: 'Défaillance de matériel' }],
+              },
+            ],
+          },
+        ])
+      : page([]);
+  };
+  try {
+    const d = new Disruptions('key');
+    await d.refresh();
+    assert.equal(d.get('123').reason, 'Défaillance de matériel');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('a failed sweep keeps the previous answers', async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1) return page([disruption('8540', 'Obstacle sur la voie')]);
+    if (calls === 2) return page([]);
+    throw new Error('network down');
+  };
+  try {
+    const d = new Disruptions('key');
+    await d.refresh();
+    await d.refresh(); // this one fails partway
+
+    // A stale reason beats none, and the ranking must not depend on this call.
+    assert.equal(d.get('8540').reason, 'Obstacle sur la voie');
+    assert.match(d.error, /network down/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('a refused key is reported, not thrown', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 401, json: async () => ({}) });
+  try {
+    const d = new Disruptions('bad');
+    await d.refresh(); // must not reject
+    assert.match(d.error, /401/);
+    assert.equal(d.size, 0);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

@@ -26,6 +26,15 @@ const FR: Dict = {
 
   'tab.watch': 'Mes trains',
   'tab.search': 'Recherche',
+  'tab.worst': 'Palmarès',
+
+  'worst.title': 'Palmarès du jour',
+  'worst.note': 'Les pires retards enregistrés aujourd’hui, motif SNCF à l’appui.',
+  'worst.noKey': 'Les pires retards enregistrés aujourd’hui. Sans clé API SNCF, les motifs ne sont pas disponibles.',
+  'worst.noReason': 'Motif non communiqué',
+  'worst.live': 'en cours',
+  'worst.empty': 'Aucun retard notable aujourd’hui. Ça arrive.',
+  'worst.failed': 'Palmarès indisponible : {error}',
   'nav.label': 'Navigation',
 
   'watch.empty.title': 'Aucun train suivi',
@@ -223,6 +232,15 @@ const EN: Dict = {
 
   'tab.watch': 'My trains',
   'tab.search': 'Search',
+  'tab.worst': 'Hall of shame',
+
+  'worst.title': 'Today’s hall of shame',
+  'worst.note': 'The worst delays recorded today, with SNCF’s own reason.',
+  'worst.noKey': 'The worst delays recorded today. Without an SNCF API key, reasons are unavailable.',
+  'worst.noReason': 'No reason given',
+  'worst.live': 'running',
+  'worst.empty': 'No notable delays today. It happens.',
+  'worst.failed': 'Hall of shame unavailable: {error}',
   'nav.label': 'Navigation',
 
   'watch.empty.title': 'No trains followed',
