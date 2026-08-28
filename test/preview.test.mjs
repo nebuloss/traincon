@@ -266,3 +266,20 @@ test('og:url keeps the tab, so the preview links where it was shared from', asyn
   assert.match(meta(body, 'og:url'), /\/train\/8540\/trajet$/);
   assert.match(meta(body, 'og:title'), /8540/);
 });
+
+
+test('each tab path serves the app shell', async () => {
+  // Client routing only works if the server hands back index.html for these.
+  for (const p of ['/recherche', '/palmares', '/search', '/worst']) {
+    const { res, body } = await get(p);
+    assert.equal(res.status, 200, `${p} should serve the shell`);
+    assert.match(res.headers.get('content-type'), /text\/html/);
+    assert.match(body, /<meta property="og:title"/);
+  }
+});
+
+test('a tab path previews as the site, not as a train', async () => {
+  const { body } = await get('/palmares');
+  assert.match(meta(body, 'og:title'), /^Traincon/);
+  assert.match(meta(body, 'og:url'), /\/palmares$/);
+});

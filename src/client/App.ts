@@ -13,7 +13,7 @@ import { Bookmarks } from './core/Bookmarks.ts';
 import { Format } from './core/Format.ts';
 import { i18n, I18n, LOCALES, tr } from './core/I18n.ts';
 import { Prefs } from './core/Cache.ts';
-import { Router, type Route } from './core/Router.ts';
+import { Router, type Route, type ViewName } from './core/Router.ts';
 import { Theme, type ThemeMode } from './core/Theme.ts';
 import { Alerts, Banner, Toast } from './components/Banner.ts';
 import { MapView, type MapMode } from './components/MapView.ts';
@@ -21,8 +21,6 @@ import { TrainModal, type ModalTab } from './components/TrainModal.ts';
 import { SearchView } from './views/SearchView.ts';
 import { WorstView } from './views/WorstView.ts';
 import { WatchView } from './views/WatchView.ts';
-
-type ViewName = 'watch' | 'search' | 'worst';
 
 const REFRESH_MS = 30_000;
 /** How stale the data must be before a wake-up bothers refetching. */
@@ -177,7 +175,7 @@ export class App {
       history.back();
       return;
     }
-    this.router.go(null, null, 'replace');
+    this.router.goView(this.view, 'replace');
     this.modal.close();
   }
 
@@ -191,6 +189,7 @@ export class App {
     if (!route.train) {
       this.modalPushed = false;
       if (this.modal.openFor) this.modal.close();
+      if (route.view && route.view !== this.view) this.showView(route.view);
       return;
     }
     if (this.modal.openFor === route.train) {
@@ -200,7 +199,19 @@ export class App {
     await this.modal.open(route.train, route.tab ?? 'apercu');
   }
 
+  /** A tab chosen by the user: update the page and give it its URL. */
   private goto(view: ViewName): void {
+    this.router.goView(view, 'push');
+    this.showView(view);
+  }
+
+  /**
+   * Show a tab without touching history.
+   *
+   * Used by Back/Forward and on first load, where the URL is already right and
+   * writing to it again would either loop or bury the entry we came from.
+   */
+  private showView(view: ViewName): void {
     this.view = view;
     for (const b of document.querySelectorAll<HTMLElement>('.tab')) {
       const on = b.dataset['view'] === view;
@@ -473,6 +484,8 @@ export class App {
       // copying the address bar afterwards yields a clean URL.
       this.router.go(initial.train, initial.tab, 'replace');
       void this.applyRoute(initial);
+    } else if (initial.view && initial.view !== this.view) {
+      this.showView(initial.view);
     }
 
     // Countdown ticks every second without refetching — but not while hidden.

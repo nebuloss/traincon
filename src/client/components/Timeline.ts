@@ -91,8 +91,20 @@ export class Timeline {
     const frac = hi > lo ? pos - lo : 0;
     const markTop = ROW_H / 2 + (lo + (hi - lo) * frac) * ROW_H;
 
+    // The rail is drawn as two absolute segments with a gap at the marker,
+    // rather than as a line behind it. Relying on z-index to put the train on
+    // top did not hold in practice — isolation, a higher index and an opaque
+    // halo all failed to keep the line off it — so nothing is drawn there at
+    // all. `--mark-r` is the marker's radius plus its halo, in CSS, so the gap
+    // follows the marker when it scales up on desktop.
+    const railStart = ROW_H / 2;
+    const railEnd = (n - 1) * ROW_H + ROW_H / 2;
+    const travelled = `max(0px, calc(${markTop - railStart}px - var(--mark-r)))`;
+    const remaining = `max(0px, calc(${railEnd - markTop}px - var(--mark-r)))`;
+
     return `<div class="tl">
-      <div class="tl-fill" style="height:${Math.max(0, markTop - ROW_H / 2)}px"></div>
+      <div class="tl-fill" style="top:calc(6px + ${railStart}px); height:${travelled}"></div>
+      <div class="tl-rail" style="top:calc(6px + ${markTop}px + var(--mark-r)); height:${remaining}"></div>
       <ul class="tl-list">${rows}</ul>
       <div class="tl-train ${atStop ? 'at-stop' : ''}" style="top:${markTop}px"
            title="${Format.esc(Format.position(this.train.position))}"

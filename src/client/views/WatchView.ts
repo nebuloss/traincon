@@ -11,6 +11,17 @@ import type { Api } from '../core/Api.ts';
 import type { Bookmarks } from '../core/Bookmarks.ts';
 import type { MissingReason, TrainDTO, TrainNotFound } from '../../shared/types.ts';
 
+/**
+ * Which kind of miss this is.
+ *
+ * Older servers predate the `reason` field, so a known timetable entry is
+ * taken as dormant — the safe reading, since calling a real train "unknown"
+ * would invite the user to delete a bookmark that is fine.
+ */
+export function missingKind(res: Pick<TrainNotFound, 'reason' | 'knownSchedule'>): MissingReason {
+  return res.reason ?? (res.knownSchedule ? 'dormant' : 'unknown');
+}
+
 export class WatchView {
   constructor(
     private readonly api: Api,
@@ -83,9 +94,7 @@ export class WatchView {
     res: TrainNotFound,
     isWatched: (n: string) => boolean,
   ): HTMLElement {
-    // Older servers predate the field; treat a known schedule as dormant.
-    const reason: MissingReason = res.reason ?? (res.knownSchedule ? 'dormant' : 'unknown');
-    const unknown = reason === 'unknown';
+    const unknown = missingKind(res) === 'unknown';
 
     const el = document.createElement('article');
     el.className = `card is-missing ${unknown ? 'is-unknown' : 'is-dormant'}`;

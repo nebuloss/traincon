@@ -179,10 +179,17 @@ it. The address bar is rewritten to the first form, which is what you get by
 copying it afterwards.
 
 ```
+/                        mes trains        /watch
+/recherche               recherche         /search
+/palmares                palmarès du jour  /worst
+
 /train/8540              /t/8540
 /train/8540/carte        tabs: apercu trajet carte journal
 ?train=8540&tab=carte    #8540      #train=8540
 ```
+
+Each tab has its own path, so Back walks through them and a link opens on the
+right one. A train link opens its modal over whichever tab you were on.
 
 Tabs are also accepted by their English names (`overview`, `journey`, `map`,
 `log`), so a link shared from the English interface reads naturally.

@@ -21,17 +21,18 @@ const { Router } = await import(path.join(ROOT, 'src/client/core/Router.ts'));
 const read = (href) => Router.read(new URL(href, 'https://traincon.example'));
 
 test('the canonical path opens a train', () => {
-  assert.deepEqual(read('/train/8540'), { train: '8540', tab: null });
-  assert.deepEqual(read('/train/8540/carte'), { train: '8540', tab: 'carte' });
-  assert.deepEqual(read('/t/8540'), { train: '8540', tab: null });
+  assert.deepEqual(read('/train/8540'), { view: null, train: '8540', tab: null });
+  assert.deepEqual(read('/train/8540/carte'), { view: null, train: '8540', tab: 'carte' });
+  assert.deepEqual(read('/t/8540'), { view: null, train: '8540', tab: null });
 });
 
 test('query and hash forms are accepted', () => {
-  assert.deepEqual(read('/?train=8540'), { train: '8540', tab: null });
-  assert.deepEqual(read('/?t=8540&tab=trajet'), { train: '8540', tab: 'trajet' });
-  assert.deepEqual(read('/#8540'), { train: '8540', tab: null });
-  assert.deepEqual(read('/#train=8540&tab=journal'), { train: '8540', tab: 'journal' });
-  assert.deepEqual(read('/#/train/8540/carte'), { train: '8540', tab: 'carte' });
+  const t = (train, tab) => ({ view: null, train, tab });
+  assert.deepEqual(read('/?train=8540'), t('8540', null));
+  assert.deepEqual(read('/?t=8540&tab=trajet'), t('8540', 'trajet'));
+  assert.deepEqual(read('/#8540'), t('8540', null));
+  assert.deepEqual(read('/#train=8540&tab=journal'), t('8540', 'journal'));
+  assert.deepEqual(read('/#/train/8540/carte'), t('8540', 'carte'));
 });
 
 test('English tab names work, so a link shared from the EN interface reads right', () => {
@@ -172,4 +173,67 @@ test('nothing opens the modal behind the router back', async () => {
 
   // And the shared click handler must use it.
   assert.match(app, /\[data-open\][^]{0,200}this\.openTrain\(/);
+});
+
+
+// ── one URL per tab ──────────────────────────────────────────────────────────
+
+test('each top-level tab has its own path', () => {
+  assert.equal(read('/').view, 'watch');
+  assert.equal(read('/recherche').view, 'search');
+  assert.equal(read('/palmares').view, 'worst');
+});
+
+test('English tab paths work too', () => {
+  assert.equal(read('/search').view, 'search');
+  assert.equal(read('/worst').view, 'worst');
+  assert.equal(read('/watch').view, 'watch');
+});
+
+test('an unrecognised path selects no tab rather than guessing', () => {
+  // The server serves the shell for anything extensionless; the app should
+  // then stay where it is rather than silently jumping to a tab.
+  assert.equal(read('/nope').view, null);
+  assert.equal(read('/recherche/extra').view, null);
+});
+
+test('a train link does not name a tab, so the modal opens over the current one', () => {
+  const r = read('/train/8540');
+  assert.equal(r.train, '8540');
+  assert.equal(r.view, null);
+});
+
+test('tab paths round-trip', () => {
+  for (const view of ['watch', 'search', 'worst']) {
+    assert.equal(read(Router.viewHref(view)).view, view);
+  }
+  assert.equal(Router.viewHref('watch'), '/', 'the default tab is the bare root');
+});
+
+test('choosing a tab pushes its path', () => {
+  const entries = stubWindow('https://traincon.example/');
+  const r = new Router();
+  r.goView('worst', 'push');
+  assert.equal(entries.at(-1).mode, 'push');
+  assert.equal(entries.at(-1).url, '/palmares');
+  assert.equal(globalThis.window.location.pathname, '/palmares');
+
+  // Back through the tabs should work like back through pages.
+  r.goView('search', 'push');
+  assert.equal(entries.at(-1).url, '/recherche');
+  assert.equal(entries.length, 2);
+});
+
+test('re-selecting the tab already shown writes no history entry', () => {
+  const entries = stubWindow('https://traincon.example/palmares');
+  new Router().goView('worst', 'push');
+  assert.equal(entries.length, 0);
+});
+
+test('closing a train returns to a tab, not always the root', () => {
+  // Opened from the hall of shame, closing should land back there.
+  const entries = stubWindow('https://traincon.example/train/8540');
+  new Router().goView('worst', 'replace');
+  assert.equal(entries.at(-1).mode, 'replace');
+  assert.equal(globalThis.window.location.pathname, '/palmares');
 });

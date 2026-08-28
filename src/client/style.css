@@ -336,25 +336,34 @@ button.primary:active { transform: translateY(1px); }
  * hiding, so it is struck through: the one case where a bookmark you trust is
  * doing nothing at all.
  */
-.card.is-missing { box-shadow: none; }
-.card.is-missing .cd-num { color: var(--muted); }
-
-.card.is-dormant {
+/*
+ * Both are struck through: the point of the card is that this bookmark is not
+ * watching anything right now, and that has to be legible at a glance rather
+ * than inferred from a dashed border.
+ */
+.card.is-missing {
+  box-shadow: none;
   border-style: dashed;
-  background: color-mix(in srgb, var(--panel) 65%, transparent);
+  background: color-mix(in srgb, var(--panel) 70%, var(--bg));
 }
-.card.is-dormant .cd-top, .card.is-dormant .cd-od { opacity: .72; }
-
-.card.is-unknown {
-  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
-  background: color-mix(in srgb, var(--bad) 6%, var(--panel));
-}
-.card.is-unknown .cd-num {
+.card.is-missing .cd-num {
   text-decoration: line-through;
-  text-decoration-color: var(--bad);
   text-decoration-thickness: 2px;
   color: var(--dead);
 }
+.card.is-missing .cd-od, .card.is-missing .cd-where { color: var(--dead); }
+.card.is-missing .badge { opacity: .55; }
+
+/* Dormant: real train, wrong moment. Muted, and it opens as usual. */
+.card.is-dormant .cd-num { text-decoration-color: var(--muted); }
+
+/* Unknown: the number does not exist, so the bookmark is junk. */
+.card.is-unknown {
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+  background: color-mix(in srgb, var(--bad) 7%, var(--panel));
+  cursor: default;
+}
+.card.is-unknown .cd-num { text-decoration-color: var(--bad); }
 
 .missing-tag {
   font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
@@ -403,6 +412,8 @@ button.primary:active { transform: translateY(1px); }
 .tl {
   --row-h: 46px;      /* must match ROW_H in app.js */
   --gutter: 34px;
+  /* Half the marker plus its halo: the gap left in the rail for it. */
+  --mark-r: 19px;
   position: relative;
   /* Own stacking context: the marker's z-index is then resolved against the
      rail and the dots, and cannot be reordered by anything outside. */
@@ -421,12 +432,8 @@ button.primary:active { transform: translateY(1px); }
 }
 .tl-rail-cell { position: relative; height: 100%; display: grid; place-items: center; }
 /* the rail itself, drawn behind every row */
-.tl-rail-cell::before {
-  content: ""; position: absolute; top: 0; bottom: 0; left: 50%;
-  width: 2px; margin-left: -1px; background: var(--line);
-}
-.tl-row:first-child .tl-rail-cell::before { top: 50%; }
-.tl-row.terminus .tl-rail-cell::before { bottom: 50%; }
+/* The rail itself is drawn by .tl-fill and .tl-rail, which leave a gap at the
+   marker; the cell only carries the station dot. */
 
 .tl-dot {
   position: relative; z-index: 1;
@@ -476,11 +483,14 @@ button.primary:active { transform: translateY(1px); }
 }
 
 /* progress fill and the train marker ride on the rail */
-.tl-fill {
-  position: absolute; left: calc(var(--gutter) / 2); top: calc(6px + var(--row-h) / 2);
-  width: 2px; margin-left: -1px; background: var(--accent);
-  border-radius: 2px; transition: height .8s ease;
+/* Travelled, and still to come. Both stop short of the marker. */
+.tl-fill, .tl-rail {
+  position: absolute; left: calc(var(--gutter) / 2);
+  width: 2px; margin-left: -1px;
+  border-radius: 2px; transition: top .8s ease, height .8s ease;
 }
+.tl-fill { background: var(--accent); }
+.tl-rail { background: var(--line); }
 /*
  * The "you are here" marker.
  *
@@ -507,7 +517,7 @@ button.primary:active { transform: translateY(1px); }
 @media (min-width: 700px) {
   .tl-train { width: 38px; height: 38px; font-size: 21px; border-width: 3px; }
   /* The marker is centred on the gutter, so the gutter has to hold it. */
-  .tl { --gutter: 46px; }
+  .tl { --gutter: 46px; --mark-r: 23px; }
   .tl-dot { width: 12px; height: 12px; }
 }
 .tl-train.at-stop { animation: pulse 1.9s ease-in-out infinite; }
