@@ -73,6 +73,7 @@ port 3000. Re-run the same command to update — `data/` is preserved so the
 | `APP_DIR` | `/opt/traincon` | install directory |
 | `SNCF_API_KEY` | — | optional, enables disruption reasons |
 | `FETCH_GEO` | `1` | `0` skips the 19 MB rail geometry |
+| `VERSION` | newest | install a specific tag, e.g. `v2.1.0` |
 | `PUBLIC_URL` | — | pins the origin in the link-preview tags; derived from the request otherwise |
 
 ## Development

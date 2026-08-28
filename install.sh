@@ -25,6 +25,7 @@ SERVICE_USER="${SERVICE_USER:-traincon}"
 NODE_VERSION="${NODE_VERSION:-22}"
 GH_REPO="${GH_REPO:-nebuloss/traincon}"
 TARBALL="${TARBALL:-}"              # install this archive instead of a release
+VERSION="${VERSION:-}"              # install this tag instead of the newest
 SNCF_API_KEY="${SNCF_API_KEY:-}"    # optional
 FETCH_GEO="${FETCH_GEO:-1}"         # 0 to skip the 19 MB rail geometry
 BOOT_TIMEOUT="${BOOT_TIMEOUT:-180}" # seconds to wait for the first response
@@ -110,8 +111,20 @@ fetch_app() {
     info "Installing from $TARBALL"
     tar -xzf "$TARBALL" -C "$tmp"
   else
-    info "Downloading the latest release of $GH_REPO"
-    url="https://github.com/${GH_REPO}/releases/latest/download/traincon.tar.gz"
+    # Resolve the tag, then download its own URL.
+    #
+    # Not releases/latest/download/: that alias is cached, and for a few
+    # minutes after a new tag it still serves the previous asset — which
+    # installs an older build over a newer one and reports success.
+    tag="$VERSION"
+    if [ -z "$tag" ]; then
+      tag=$(curl -fsSL "https://api.github.com/repos/${GH_REPO}/releases/latest" |
+            sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
+            head -1)
+      [ -n "$tag" ] || error "could not resolve the latest release of $GH_REPO"
+    fi
+    info "Downloading $tag of $GH_REPO"
+    url="https://github.com/${GH_REPO}/releases/download/${tag}/traincon.tar.gz"
     curl -fsSL "$url" -o "$tmp/app.tar.gz" || error "download failed: $url"
     tar -xzf "$tmp/app.tar.gz" -C "$tmp"
   fi
