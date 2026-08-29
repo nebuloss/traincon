@@ -13,7 +13,24 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { Family, TrainDTO, WorstTrainDTO } from '../shared/types.ts';
+import type { Family, WorstTrainDTO } from '../shared/types.ts';
+
+/**
+ * The little the board needs from a train.
+ *
+ * Deliberately not TrainDTO: building those for the whole network on every
+ * refresh meant routing every train over the rail graph and materialising
+ * every call list, once a minute, to read six scalars. That is what pushed the
+ * heap past its ceiling and took the service down.
+ */
+export interface BoardTrain {
+  number: string;
+  service: string | null;
+  origin: string;
+  destination: string;
+  cancelled: boolean;
+  worstDelay: number;
+}
 
 /** Below this a train is not interesting enough to record. */
 const MIN_DELAY = 10 * 60;
@@ -78,8 +95,17 @@ export class DailyBoard {
     }
   }
 
-  /** Fold the current snapshot into the day's records. */
-  observe(trains: TrainDTO[], now = Math.floor(Date.now() / 1000)): void {
+  /**
+   * Fold the current snapshot into the day's records.
+   *
+   * `label` is a callback rather than a field so it is only paid for the
+   * handful of trains that make the board, not for the whole network.
+   */
+  observe(
+    trains: readonly BoardTrain[],
+    label: (service: string | null) => { label: string; family: Family },
+    now = Math.floor(Date.now() / 1000),
+  ): void {
     const today = DailyBoard.today();
     if (today !== this.day) {
       this.day = today;
@@ -94,10 +120,11 @@ export class DailyBoard {
       const prev = this.entries.get(t.number);
       if (prev && !t.cancelled && t.worstDelay <= prev.delay) continue;
 
+      const meta = label(t.service);
       this.entries.set(t.number, {
         number: t.number,
-        serviceLabel: t.serviceLabel,
-        family: t.family,
+        serviceLabel: meta.label,
+        family: meta.family,
         origin: t.origin,
         destination: t.destination,
         delay: Math.max(t.worstDelay, prev?.delay ?? 0),

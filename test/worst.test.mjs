@@ -17,17 +17,25 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { DailyBoard } = await import(path.join(ROOT, 'dist-server/server/DailyBoard.js'));
 const { Disruptions } = await import(path.join(ROOT, 'dist-server/server/Disruptions.js'));
 
-/** A TrainDTO with only the fields the board reads. */
+/**
+ * A train in the shape the board reads.
+ *
+ * Deliberately not a TrainDTO: the board takes the raw train plus a lookup for
+ * the service label, so it never pays to build a DTO — and never routes a
+ * train over the rail graph — for the whole network once a minute.
+ */
 const train = (number, worstDelay, extra = {}) => ({
   number,
-  serviceLabel: 'TGV INOUI',
-  family: 'tgv',
+  service: 'OUIGO',
   origin: 'Hendaye',
   destination: 'Paris Montparnasse',
   worstDelay,
   cancelled: false,
   ...extra,
 });
+
+/** Stand-in for serviceMeta. */
+const META = () => ({ label: 'TGV INOUI', family: 'tgv' });
 
 const NONE = { live: () => false, reason: () => null };
 
@@ -41,9 +49,9 @@ async function board() {
 test('the board records the peak delay, not the current one', async () => {
   const { b, cleanup } = await board();
   try {
-    b.observe([train('8540', 90 * 60)]);
+    b.observe([train('8540', 90 * 60)], META);
     // The train makes up an hour; it was still 90 minutes down today.
-    b.observe([train('8540', 30 * 60)]);
+    b.observe([train('8540', 30 * 60)], META);
     assert.equal(b.top(5, NONE)[0].delay, 90 * 60);
   } finally {
     await cleanup();
@@ -53,7 +61,7 @@ test('the board records the peak delay, not the current one', async () => {
 test('trains below the threshold never reach the board', async () => {
   const { b, cleanup } = await board();
   try {
-    b.observe([train('1', 5 * 60), train('2', 11 * 60)]);
+    b.observe([train('1', 5 * 60), train('2', 11 * 60)], META);
     assert.deepEqual(b.top(5, NONE).map((t) => t.number), ['2']);
   } finally {
     await cleanup();
@@ -63,7 +71,7 @@ test('trains below the threshold never reach the board', async () => {
 test('a cancelled train belongs there whatever its delay says', async () => {
   const { b, cleanup } = await board();
   try {
-    b.observe([train('9', 0, { cancelled: true })]);
+    b.observe([train('9', 0, { cancelled: true })], META);
     const [row] = b.top(5, NONE);
     assert.equal(row.number, '9');
     assert.equal(row.cancelled, true);
@@ -75,7 +83,7 @@ test('a cancelled train belongs there whatever its delay says', async () => {
 test('ranking is worst first', async () => {
   const { b, cleanup } = await board();
   try {
-    b.observe([train('a', 20 * 60), train('b', 200 * 60), train('c', 60 * 60)]);
+    b.observe([train('a', 20 * 60), train('b', 200 * 60), train('c', 60 * 60)], META);
     assert.deepEqual(b.top(5, NONE).map((t) => t.number), ['b', 'c', 'a']);
     assert.equal(b.top(2, NONE).length, 2, 'limit is honoured');
   } finally {
@@ -86,7 +94,7 @@ test('ranking is worst first', async () => {
 test('live and reason are filled from the caller', async () => {
   const { b, cleanup } = await board();
   try {
-    b.observe([train('8540', 90 * 60)]);
+    b.observe([train('8540', 90 * 60)], META);
     const [row] = b.top(5, {
       live: (n) => n === '8540',
       reason: (n) => (n === '8540' ? 'Obstacle sur la voie' : null),
@@ -103,7 +111,7 @@ test('the board survives a restart within the same day', async () => {
   try {
     const first = new DailyBoard(dir);
     await first.load();
-    first.observe([train('8540', 90 * 60)]);
+    first.observe([train('8540', 90 * 60)], META);
     await first.save();
 
     // A restart mid-afternoon must not lose the morning.
@@ -120,7 +128,7 @@ test("yesterday's board is not shown as today's", async () => {
   try {
     const first = new DailyBoard(dir);
     await first.load();
-    first.observe([train('8540', 90 * 60)]);
+    first.observe([train('8540', 90 * 60)], META);
     await first.save();
 
     // Rewrite the stored day as the past, as an overnight restart would find it.
@@ -254,5 +262,35 @@ test('a refused key is reported, not thrown', async () => {
     assert.equal(d.size, 0);
   } finally {
     globalThis.fetch = original;
+  }
+});
+
+
+test('the board costs nothing for a train that does not make it', async () => {
+  // This is the whole point of taking a callback: building a DTO per train —
+  // which routes each one over the rail graph — once a minute for the entire
+  // network is what exhausted the heap and took the service down.
+  const { b, cleanup } = await board();
+  try {
+    let looked = 0;
+    const counting = () => {
+      looked++;
+      return { label: 'TGV INOUI', family: 'tgv' };
+    };
+
+    const network = [];
+    for (let i = 0; i < 2000; i++) network.push(train(String(i), 0));
+    network.push(train('late', 90 * 60));
+
+    b.observe(network, counting);
+    assert.equal(looked, 1, 'only the delayed train should be looked up');
+    assert.equal(b.size, 1);
+
+    // And a second pass with nothing new must look nothing up at all.
+    looked = 0;
+    b.observe(network, counting);
+    assert.equal(looked, 0, 'an unchanged peak should not be rebuilt');
+  } finally {
+    await cleanup();
   }
 });

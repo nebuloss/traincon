@@ -54,6 +54,8 @@ export class App {
   private feedDown = false;
   private lastRender = 0;
   private rendering = false;
+  /** A refresh asked for while one was already running. */
+  private renderQueued = false;
 
   constructor() {
     this.modal = new TrainModal(
@@ -136,9 +138,33 @@ export class App {
     }
   }
 
+  /**
+   * Refresh the current view, one at a time.
+   *
+   * A request that arrives mid-render is queued rather than dropped. Dropping
+   * it meant switching tab while a refresh was in flight left the new tab on
+   * whatever it had — empty, on first visit — until the next tick.
+   */
   async render(): Promise<void> {
-    if (this.rendering) return; // a wake must not race the interval
+    if (this.rendering) {
+      this.renderQueued = true;
+      return;
+    }
     this.rendering = true;
+    try {
+      do {
+        this.renderQueued = false;
+        await this.renderOnce();
+      } while (this.renderQueued);
+    } finally {
+      // In a finally because it was not: one throw anywhere below left the
+      // flag set for the life of the page and every later refresh returned
+      // immediately, freezing the whole interface until a reload.
+      this.rendering = false;
+    }
+  }
+
+  private async renderOnce(): Promise<void> {
     try {
       if (this.view === 'watch') await this.watchView.render(this.feedDown);
       else if (this.view === 'worst') await this.worstView.render();
@@ -151,7 +177,6 @@ export class App {
     this.renderNotifyButton();
     await this.renderFeedState();
     this.lastRender = Date.now();
-    this.rendering = false;
   }
 
   private renderNotifyButton(): void {

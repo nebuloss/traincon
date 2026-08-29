@@ -237,3 +237,34 @@ test('closing a train returns to a tab, not always the root', () => {
   assert.equal(entries.at(-1).mode, 'replace');
   assert.equal(globalThis.window.location.pathname, '/palmares');
 });
+
+
+// ── the refresh loop ─────────────────────────────────────────────────────────
+
+/**
+ * Two ways the interface stopped refreshing, both invisible until someone
+ * noticed a tab was stale.
+ *
+ * Checked in the source because driving App means pulling in a DOM, and the
+ * failure modes are structural: a dropped request and a flag that never
+ * cleared.
+ */
+test('a refresh asked for mid-render is queued, not dropped', async () => {
+  const app = await readFile(path.join(ROOT, 'src/client/App.ts'), 'utf8');
+  const render = app.slice(app.indexOf('  async render()'));
+  const body = render.slice(0, render.indexOf('\n  private async renderOnce'));
+
+  assert.match(body, /this\.renderQueued = true/, 'a busy render must queue the request');
+  assert.ok(!/if \(this\.rendering\) return;/.test(body), 'dropping it leaves a tab stale');
+});
+
+test('the rendering flag is cleared in a finally', async () => {
+  // It was not, so a single throw froze every later refresh for the life of
+  // the page — the whole interface silently stopped updating.
+  const app = await readFile(path.join(ROOT, 'src/client/App.ts'), 'utf8');
+  const render = app.slice(app.indexOf('  async render()'));
+  const body = render.slice(0, render.indexOf('\n  private async renderOnce'));
+
+  const finallyBlock = body.slice(body.indexOf('} finally {'));
+  assert.ok(finallyBlock.includes('this.rendering = false'), 'must clear even on a throw');
+});

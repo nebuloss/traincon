@@ -162,8 +162,10 @@ export class TrainStore {
 
     this.couples = this.coupling.detect(this.trains, now, this.rail);
 
-    // Record the day's worst before pruning drops anything.
-    this.board.observe(this.list(), now);
+    // Record the day's worst before pruning drops anything. The raw trains,
+    // not list(): that builds a DTO per train, routing each one over the rail
+    // graph, and doing it every minute exhausted the heap.
+    this.board.observe(this.trains, serviceMeta, now);
     void this.board.save().catch(() => undefined);
 
     this.prune();
