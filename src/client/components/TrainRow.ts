@@ -37,16 +37,32 @@ export interface RowOptions {
   rank?: number;
   /** Marks a train still in the live feed, when the list also holds past ones. */
   live?: boolean;
+  /**
+   * Whether the row opens the detail modal.
+   *
+   * The hall of shame keeps trains that have finished, or have not yet entered
+   * the feed window, and there is nothing to open for those — the modal would
+   * flash up and close itself the moment the lookup came back empty. Such a row
+   * is rendered inert instead: its delay and reason are already on it.
+   */
+  clickable?: boolean;
 }
 
 export function trainRow(t: RowTrain, opts: RowOptions): string {
   const tier = Format.delayTier(t.delay, t.cancelled);
   const label = Format.label({ number: t.number, coupledWith: t.coupledWith ?? [] });
+  const clickable = opts.clickable ?? true;
 
-  return `<li role="option" class="sg-row">
+  // A div rather than a disabled button: nothing here is actionable, so it
+  // should not take focus or be announced as a control either.
+  const open = clickable
+    ? `<button class="sg" data-open="${Format.esc(t.number)}">`
+    : '<div class="sg is-static">';
+
+  return `<li role="option" class="sg-row${clickable ? '' : ' is-static'}">
     ${opts.rank === undefined ? '' : `<span class="rank" aria-hidden="true">${opts.rank}</span>`}
     ${starButton(t.number, opts.isWatched)}
-    <button class="sg" data-open="${Format.esc(t.number)}">
+    ${open}
       <div class="sg-main">
         <div class="sg-top">
           <span class="badge ${t.family}">${Format.esc(t.serviceLabel)}</span>
@@ -60,6 +76,6 @@ export function trainRow(t: RowTrain, opts: RowOptions): string {
       <div class="sg-delay ${tier}">${
         t.cancelled ? Format.esc(tr('delay.cancelled')) : Format.delay(t.delay)
       }</div>
-    </button>
+    ${clickable ? '</button>' : '</div>'}
   </li>`;
 }

@@ -294,3 +294,40 @@ test('the board costs nothing for a train that does not make it', async () => {
     await cleanup();
   }
 });
+
+
+// ── rows with nothing behind them ────────────────────────────────────────────
+
+/**
+ * The board keeps trains that have finished their run or have not reached the
+ * forecast window, so most of it is history rather than live trains. Opening
+ * one of those produced a modal that appeared and closed itself the moment the
+ * lookup came back empty.
+ *
+ * Checked in the source: rendering a row means pulling in the DOM and the
+ * translation layer, and what matters here is structural.
+ */
+test('only a live train gets a clickable row in the hall of shame', async () => {
+  const view = await readFile(path.join(ROOT, 'src/client/views/WorstView.ts'), 'utf8');
+  assert.match(view, /clickable:\s*r\.live/, 'the row must follow the live flag');
+});
+
+test('an inert row is not a button and cannot be opened', async () => {
+  const row = await readFile(path.join(ROOT, 'src/client/components/TrainRow.ts'), 'utf8');
+
+  // data-open must appear only on the clickable branch.
+  const clickableBranch = row.slice(row.indexOf('const open = clickable'));
+  const branch = clickableBranch.slice(0, clickableBranch.indexOf(';'));
+  assert.match(branch, /data-open/, 'the clickable branch opens the modal');
+  assert.ok(
+    !branch.slice(branch.indexOf(':')).includes('data-open'),
+    'the inert branch must not carry data-open',
+  );
+  assert.match(branch, /<div class="sg is-static">/, 'inert rows are not buttons');
+});
+
+test('an inert row offers no click affordance', async () => {
+  const css = await readFile(path.join(ROOT, 'src/client/style.css'), 'utf8');
+  const rule = css.slice(css.indexOf('.sg-row.is-static {'));
+  assert.match(rule.slice(0, rule.indexOf('}')), /cursor:\s*default/);
+});

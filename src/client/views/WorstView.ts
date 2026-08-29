@@ -31,6 +31,9 @@ export class WorstView {
       isWatched: (n) => this.bookmarks.has(n),
       rank,
       live: r.live,
+      // Only a train still in the feed has a detail to show. The rest are
+      // records of the day; opening one gave a modal that closed itself.
+      clickable: r.live,
     });
   }
 

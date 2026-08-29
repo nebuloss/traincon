@@ -286,6 +286,17 @@ button.primary:active { transform: translateY(1px); }
   color: var(--ok); white-space: nowrap;
 }
 .empty-row { padding: 22px 14px; text-align: center; color: var(--muted); }
+
+/*
+ * A row with nothing to open: a train that has finished its run, or has not
+ * reached the forecast window yet. Same reasoning as the missing bookmark —
+ * no hand cursor and no press feedback for something that does not respond.
+ * The star inside keeps its own.
+ */
+.sg-row.is-static { cursor: default; }
+.sg-row.is-static:has(.sg:active) { background: var(--panel); }
+.sg.is-static { cursor: default; }
+.sg-row.is-static .sg-num { color: var(--muted); }
 .sg-why .muted { color: var(--dead); font-style: italic; }
 
 /* ---------------------------------------------------------------
