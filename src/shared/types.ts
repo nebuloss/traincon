@@ -206,6 +206,14 @@ export interface StatsDTO {
   /** Serving a captured fixture rather than live data. */
   replay: boolean;
   error: string | null;
+  /** Process memory in MB, so a heap approaching its ceiling is visible. */
+  memory?: {
+    heapUsed: number;
+    heapTotal: number;
+    rss: number;
+    /** The --max-old-space-size the installer set, when it set one. */
+    limit: number | null;
+  };
 }
 
 export interface TrainFound {

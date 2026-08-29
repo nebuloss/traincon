@@ -471,6 +471,26 @@ export class TrainStore {
     };
   }
 
+  /**
+   * What the process is using, in MB.
+   *
+   * This has died twice on the V8 heap ceiling, and both times the only
+   * evidence was RSS sampled from outside — which includes everything the heap
+   * is not, so it could never say how close the limit actually was. `limit` is
+   * the ceiling the installer set, so the three numbers together answer it.
+   */
+  private static memory(): StatsDTO['memory'] {
+    const m = process.memoryUsage();
+    const mb = (bytes: number): number => Math.round(bytes / 1024 / 1024);
+    const cap = /--max-old-space-size=(\d+)/.exec(process.env['NODE_OPTIONS'] ?? '');
+    return {
+      heapUsed: mb(m.heapUsed),
+      heapTotal: mb(m.heapTotal),
+      rss: mb(m.rss),
+      limit: cap ? Number(cap[1]) : null,
+    };
+  }
+
   stats(): StatsDTO {
     const now = Math.floor(Date.now() / 1000);
     const byFamily: Partial<Record<Family, number>> = {};
@@ -493,6 +513,7 @@ export class TrainStore {
       stale: this.fromSnapshot,
       replay: this.replay,
       error: this.error,
+      memory: TrainStore.memory(),
     };
   }
 }
