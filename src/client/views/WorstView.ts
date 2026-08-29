@@ -23,6 +23,25 @@ export class WorstView {
     private readonly bookmarks: Bookmarks,
   ) {}
 
+  /** The badge for a row's state, or none when there is nothing to add. */
+  private static tag(status: WorstTrainDTO['status']): {
+    text: string;
+    kind: 'live' | 'past' | 'future';
+  } | null {
+    switch (status) {
+      case 'running':
+        return { text: tr('worst.running'), kind: 'live' };
+      case 'finished':
+        return { text: tr('worst.finished'), kind: 'past' };
+      case 'upcoming':
+        return { text: tr('worst.upcoming'), kind: 'future' };
+      default:
+        // Not in the feed and the schedule does not say why; claiming it had
+        // arrived would be a guess.
+        return { text: tr('worst.gone'), kind: 'past' };
+    }
+  }
+
   private row(r: WorstTrainDTO, rank: number): string {
     return trainRow(r, {
       detail: r.reason
@@ -30,7 +49,7 @@ export class WorstView {
         : `<span class="muted">${Format.esc(tr('worst.noReason'))}</span>`,
       isWatched: (n) => this.bookmarks.has(n),
       rank,
-      live: r.live,
+      tag: WorstView.tag(r.status),
       // Only a train still in the feed has a detail to show. The rest are
       // records of the day; opening one gave a modal that closed itself.
       clickable: r.live,

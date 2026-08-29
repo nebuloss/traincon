@@ -281,6 +281,11 @@ export interface WorstTrainDTO {
   cancelled: boolean;
   /** Still in the live feed, so the modal can show it moving. */
   live: boolean;
+  /**
+   * Why it is or is not live: running now, already arrived, not departed yet,
+   * or absent from the feed for a reason the schedule does not explain.
+   */
+  status: 'running' | 'finished' | 'upcoming' | 'gone';
   /** Cause as SNCF words it, when the disruption feed names one. */
   reason: string | null;
 }

@@ -24,6 +24,8 @@ const { Disruptions } = await import(path.join(ROOT, 'dist-server/server/Disrupt
  * the service label, so it never pays to build a DTO — and never routes a
  * train over the rail graph — for the whole network once a minute.
  */
+const NOW = Math.floor(Date.UTC(2026, 7, 29, 12, 0) / 1000);
+
 const train = (number, worstDelay, extra = {}) => ({
   number,
   service: 'OUIGO',
@@ -31,6 +33,8 @@ const train = (number, worstDelay, extra = {}) => ({
   destination: 'Paris Montparnasse',
   worstDelay,
   cancelled: false,
+  // Ran this morning and arrived, unless a test says otherwise.
+  calls: [{ time: NOW - 7200 }, { time: NOW - 3600 }],
   ...extra,
 });
 
@@ -330,4 +334,54 @@ test('an inert row offers no click affordance', async () => {
   const css = await readFile(path.join(ROOT, 'src/client/style.css'), 'utf8');
   const rule = css.slice(css.indexOf('.sg-row.is-static {'));
   assert.match(rule.slice(0, rule.indexOf('}')), /cursor:\s*default/);
+});
+
+
+// ── why a row is not live ────────────────────────────────────────────────────
+
+test('a row says whether it has finished or has not started', async () => {
+  const { b, cleanup } = await board();
+  try {
+    b.observe(
+      [
+        train('done', 90 * 60), // arrived an hour ago
+        train('later', 90 * 60, { calls: [{ time: NOW + 3600 }, { time: NOW + 7200 }] }),
+        train('now', 90 * 60, { calls: [{ time: NOW - 3600 }, { time: NOW + 3600 }] }),
+      ],
+      META,
+    );
+
+    const rows = b.top(5, { live: (n) => n === 'now', reason: () => null }, NOW);
+    const status = Object.fromEntries(rows.map((r) => [r.number, r.status]));
+
+    assert.equal(status.done, 'finished');
+    assert.equal(status.later, 'upcoming');
+    assert.equal(status.now, 'running', 'in the feed wins over the schedule');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('a train mid-run but absent from the feed is not called arrived', async () => {
+  // Claiming it had finished would be a guess, and the wrong one.
+  const { b, cleanup } = await board();
+  try {
+    b.observe([train('x', 90 * 60, { calls: [{ time: NOW - 3600 }, { time: NOW + 3600 }] })], META);
+    const [row] = b.top(1, { live: () => false, reason: () => null }, NOW);
+    assert.equal(row.status, 'gone');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('a board saved before the schedule was recorded still renders', async () => {
+  // Older files have no startsAt/endsAt; those rows must not claim a state.
+  const { b, cleanup } = await board();
+  try {
+    b.observe([train('x', 90 * 60, { calls: [] })], META);
+    const [row] = b.top(1, { live: () => false, reason: () => null }, NOW);
+    assert.equal(row.status, 'gone');
+  } finally {
+    await cleanup();
+  }
 });

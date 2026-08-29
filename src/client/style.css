@@ -279,12 +279,18 @@ button.primary:active { transform: translateY(1px); }
   font-size: 12px; font-weight: 700; color: var(--dead);
   font-variant-numeric: tabular-nums;
 }
-/* The board keeps trains that have finished, so mark the ones still moving. */
-.live-tag {
+/*
+ * Most of the board is history, so every row says which it is. The badge
+ * matters most on the rows that do not open: inert and silent just looks
+ * broken.
+ */
+.state-tag {
   font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: 2px 6px;
-  border-radius: 5px; background: color-mix(in srgb, var(--ok) 20%, transparent);
-  color: var(--ok); white-space: nowrap;
+  border-radius: 5px; white-space: nowrap;
 }
+.state-tag.live { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+.state-tag.past { background: color-mix(in srgb, var(--dead) 22%, transparent); color: var(--muted); }
+.state-tag.future { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
 .empty-row { padding: 22px 14px; text-align: center; color: var(--muted); }
 
 /*

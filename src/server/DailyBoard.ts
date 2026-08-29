@@ -30,6 +30,8 @@ export interface BoardTrain {
   destination: string;
   cancelled: boolean;
   worstDelay: number;
+  /** Its own calls, read for the first and last times only. */
+  calls: readonly { time: number }[];
 }
 
 /** Below this a train is not interesting enough to record. */
@@ -48,6 +50,9 @@ interface Entry {
   /** When that peak was recorded, epoch seconds. */
   at: number;
   cancelled: boolean;
+  /** Scheduled departure and arrival, so a row can say why it is not live. */
+  startsAt?: number;
+  endsAt?: number;
 }
 
 export class DailyBoard {
@@ -130,6 +135,8 @@ export class DailyBoard {
         delay: Math.max(t.worstDelay, prev?.delay ?? 0),
         at: prev && t.worstDelay <= (prev.delay ?? 0) ? prev.at : now,
         cancelled: t.cancelled || Boolean(prev?.cancelled),
+        startsAt: t.calls[0]?.time,
+        endsAt: t.calls[t.calls.length - 1]?.time,
       });
       this.dirty = true;
     }
@@ -154,11 +161,35 @@ export class DailyBoard {
   top(
     limit: number,
     opts: { live: (n: string) => boolean; reason: (n: string) => string | null },
+    now = Math.floor(Date.now() / 1000),
   ): WorstTrainDTO[] {
     return [...this.entries.values()]
       .sort((a, b) => b.delay - a.delay || a.number.localeCompare(b.number))
       .slice(0, limit)
-      .map((e) => ({ ...e, live: opts.live(e.number), reason: opts.reason(e.number) }));
+      .map((e) => {
+        const live = opts.live(e.number);
+        return {
+          ...e,
+          live,
+          status: DailyBoard.status(e, live, now),
+          reason: opts.reason(e.number),
+        };
+      });
+  }
+
+  /**
+   * Why a row is, or is not, live.
+   *
+   * Most of the board is history, and a row you cannot open should say which
+   * kind it is rather than just failing to respond. Entries saved before this
+   * was recorded have no schedule, so they fall back to 'gone' — true of
+   * anything not in the feed, and never misleading.
+   */
+  private static status(e: Entry, live: boolean, now: number): WorstTrainDTO['status'] {
+    if (live) return 'running';
+    if (e.startsAt !== undefined && e.startsAt > now) return 'upcoming';
+    if (e.endsAt !== undefined && e.endsAt <= now) return 'finished';
+    return 'gone';
   }
 
   get day_(): string {

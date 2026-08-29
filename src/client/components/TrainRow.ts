@@ -35,8 +35,13 @@ export interface RowOptions {
   isWatched: (n: string) => boolean;
   /** Position in an ordered list, shown as a rank badge. */
   rank?: number;
-  /** Marks a train still in the live feed, when the list also holds past ones. */
-  live?: boolean;
+  /**
+   * A short state badge — running, arrived, not departed yet.
+   *
+   * Worth showing precisely on the rows that do not open: an inert row that
+   * says nothing just looks broken.
+   */
+  tag?: { text: string; kind: 'live' | 'past' | 'future' } | null;
   /**
    * Whether the row opens the detail modal.
    *
@@ -68,7 +73,11 @@ export function trainRow(t: RowTrain, opts: RowOptions): string {
           <span class="badge ${t.family}">${Format.esc(t.serviceLabel)}</span>
           <span class="sg-num">${Format.esc(label)}</span>
           ${t.coupledWith?.length ? '<span class="um-tag">UM</span>' : ''}
-          ${opts.live ? `<span class="live-tag">${Format.esc(tr('worst.live'))}</span>` : ''}
+          ${
+            opts.tag
+              ? `<span class="state-tag ${opts.tag.kind}">${Format.esc(opts.tag.text)}</span>`
+              : ''
+          }
         </div>
         <div class="sg-od">${Format.esc(t.origin)} → ${Format.esc(t.destination)}</div>
         <div class="sg-why">${opts.detail}</div>
