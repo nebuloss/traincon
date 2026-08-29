@@ -385,3 +385,34 @@ test('a board saved before the schedule was recorded still renders', async () =>
     await cleanup();
   }
 });
+
+
+test('an entry written without a schedule picks one up while it can', async () => {
+  // Upgrading mid-day leaves entries that cannot say whether their train has
+  // finished. They can be repaired only while the train is still in the feed.
+  const { b, cleanup } = await board();
+  try {
+    b.observe([train('x', 90 * 60, { calls: [] })], META);
+    assert.equal(b.top(1, NONE, NOW)[0].status, 'gone', 'nothing to go on yet');
+
+    // Same peak, but now we can see its schedule.
+    b.observe(
+      [train('x', 90 * 60, { calls: [{ time: NOW - 7200 }, { time: NOW - 3600 }] })],
+      META,
+    );
+    assert.equal(b.top(1, NONE, NOW)[0].status, 'finished');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('the backfill does not disturb the recorded peak', async () => {
+  const { b, cleanup } = await board();
+  try {
+    b.observe([train('x', 90 * 60, { calls: [] })], META);
+    b.observe([train('x', 10 * 60, { calls: [{ time: NOW - 100 }, { time: NOW }] })], META);
+    assert.equal(b.top(1, NONE, NOW)[0].delay, 90 * 60, 'the peak must stand');
+  } finally {
+    await cleanup();
+  }
+});

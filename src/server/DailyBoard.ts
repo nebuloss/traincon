@@ -123,7 +123,18 @@ export class DailyBoard {
       if (!t.cancelled && t.worstDelay < MIN_DELAY) continue;
 
       const prev = this.entries.get(t.number);
-      if (prev && !t.cancelled && t.worstDelay <= prev.delay) continue;
+      if (prev && !t.cancelled && t.worstDelay <= prev.delay) {
+        // The peak has not moved, so the entry stands — but one written before
+        // the schedule was recorded has no way to say whether the train has
+        // finished or not left yet. Fill it in while the train is still in the
+        // feed to be asked; once it drops out, the chance is gone for the day.
+        if (prev.startsAt === undefined && t.calls.length) {
+          prev.startsAt = t.calls[0]!.time;
+          prev.endsAt = t.calls[t.calls.length - 1]!.time;
+          this.dirty = true;
+        }
+        continue;
+      }
 
       const meta = label(t.service);
       this.entries.set(t.number, {
