@@ -403,8 +403,11 @@ heap_limit() {
     ''|*[!0-9]*) echo 512; return 0 ;;
   esac
 
-  # Leave room for everything outside the old space: socket buffers, the
-  # protobuf decode, and the rail graph's typed arrays.
+  # Leave room for everything outside the old space. Not the rail graph: that
+  # is plain JS arrays and lives *in* the heap. It is Node's own runtime, the
+  # protobuf decode, socket buffers, and the memory the allocator keeps after
+  # parsing two 9.5 MB geometry files at boot — measured at ~210 MB of RSS
+  # above a 90 MB heap, which is why 55% rather than something higher.
   heap=$((mb * 55 / 100))
   [ "$heap" -lt 192 ]  && heap=192
   [ "$heap" -gt 1024 ] && heap=1024
