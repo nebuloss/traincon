@@ -229,3 +229,41 @@ test('the reported allowance appears only when it bites', () => {
   assert.ok(t.allowedKmh < 160, `allowed ${t.allowedKmh} of 160`);
   assert.ok(t.allowedKmh > 0);
 });
+
+
+test('two halves of a coupled train do not hold each other back', () => {
+  // Seen in production: 12177 and 5537 are one train, Strasbourg to Nice,
+  // drawn at the same point because they are in the same place. Without this
+  // one of them was pushed a block back for running into itself.
+  const a = running('12177', 'L1', 0, 0.5);
+  const b = running('5537', 'L1', 0, 0.5);
+  a.coupledWith = ['5537'];
+  b.coupledWith = ['12177'];
+
+  const t = analyseTraffic([a, b], twoKm);
+  assert.equal(t.get('12177').pushedM, undefined, 'a train cannot follow itself');
+  assert.equal(t.get('12177').ahead, undefined);
+  assert.equal(t.get('5537').pushedM, undefined);
+});
+
+test('the exclusion holds even if only one side records the coupling', () => {
+  const a = running('12177', 'L1', 0, 0.4);
+  const b = running('5537', 'L1', 0.3, 0.6);
+  a.coupledWith = ['5537'];
+  // b.coupledWith deliberately left unset.
+  const t = analyseTraffic([a, b], twoKm);
+  assert.equal(t.get('12177').pushedM, undefined);
+});
+
+test('an ordinary follower is still held when a coupled set is nearby', () => {
+  const a = running('12177', 'L1', 0, 0.5);
+  const b = running('5537', 'L1', 0, 0.5);
+  a.coupledWith = ['5537'];
+  b.coupledWith = ['12177'];
+  // A genuine third train closing on them.
+  const c = running('9999', 'L1', -0.8, 0.3);
+
+  const t = analyseTraffic([a, b, c], twoKm);
+  assert.ok(t.get('9999').pushedM > 0, 'a real follower must still be held');
+  assert.ok(['12177', '5537'].includes(t.get('9999').ahead));
+});

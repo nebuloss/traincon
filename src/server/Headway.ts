@@ -27,6 +27,15 @@ export interface Follower {
   /** Line identifier, as published in the timetable. */
   line: string;
   position: Position;
+  /**
+   * The other numbers of this physical train, when it is a coupled set.
+   *
+   * Two portions joined together are one train carrying two numbers, drawn at
+   * the same point because they are in the same place. Without this they look
+   * like a train sitting on top of another and one gets pushed a block back —
+   * seen in production on 12177/5537, Strasbourg to Nice.
+   */
+  coupledWith?: readonly string[];
 }
 
 export interface Held {
@@ -178,6 +187,9 @@ export function analyseTraffic(
       let nearest: { train: Follower; gapKm: number } | null = null;
       for (const b of group) {
         if (a.number === b.number) continue;
+        // Two halves of one coupled train are not following each other.
+        if (a.coupledWith?.includes(b.number) || b.coupledWith?.includes(a.number)) continue;
+
         const pb = b.position;
         if (headingGap(pa.bearing ?? 0, pb.bearing ?? 0) > SAME_WAY_DEG) continue;
         if ((pb.progress ?? 0) <= (pa.progress ?? 0)) continue;

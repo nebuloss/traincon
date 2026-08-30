@@ -546,6 +546,7 @@ export class TrainStore {
       followers.push({
         number: t.number,
         line,
+        coupledWith: this.couples.partners.get(t.number) ?? [],
         position: {
           basis: 'between' as const,
           lat,
