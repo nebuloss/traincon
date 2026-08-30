@@ -1,6 +1,6 @@
 {
   "name": "traincon",
-  "version": "2.6.2",
+  "version": "2.6.3",
   "description": "Live tracking for French trains, built on SNCF open data",
   "main": "index.js",
   "scripts": {

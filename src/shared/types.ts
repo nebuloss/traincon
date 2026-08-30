@@ -213,6 +213,17 @@ export interface StatsDTO {
     rss: number;
     /** The --max-old-space-size the installer set, when it set one. */
     limit: number | null;
+    /** Sizes of everything that outlives a single refresh. */
+    retained?: {
+      trains: number;
+      history: number;
+      historySamples: number;
+      lastSeen: number;
+      board: number;
+      disruptions: number;
+      paths: number;
+      pathPoints: number;
+    };
   };
 }
 

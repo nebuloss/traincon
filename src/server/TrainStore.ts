@@ -479,7 +479,28 @@ export class TrainStore {
    * is not, so it could never say how close the limit actually was. `limit` is
    * the ceiling the installer set, so the three numbers together answer it.
    */
-  private static memory(): StatsDTO['memory'] {
+  /**
+   * How big each retained structure is.
+   *
+   * The process has died on the heap ceiling three times, and each diagnosis
+   * so far has been inference from a single total. These are the only things
+   * that live longer than one refresh, so whichever of them is growing is the
+   * answer — and if none of them is, the leak is not here.
+   */
+  private retained(): NonNullable<StatsDTO['memory']>['retained'] {
+    return {
+      trains: this.trains.length,
+      history: this.history.size,
+      historySamples: [...this.history.values()].reduce((n, h) => n + h.length, 0),
+      lastSeen: this.lastSeen.size,
+      board: this.board.size,
+      disruptions: this.disruptions.size,
+      paths: this.rail?.cacheStats.paths ?? 0,
+      pathPoints: this.rail?.cacheStats.points ?? 0,
+    };
+  }
+
+  private static memory(): Omit<NonNullable<StatsDTO['memory']>, 'retained'> {
     const m = process.memoryUsage();
     const mb = (bytes: number): number => Math.round(bytes / 1024 / 1024);
     const cap = /--max-old-space-size=(\d+)/.exec(process.env['NODE_OPTIONS'] ?? '');
@@ -513,7 +534,7 @@ export class TrainStore {
       stale: this.fromSnapshot,
       replay: this.replay,
       error: this.error,
-      memory: TrainStore.memory(),
+      memory: { ...TrainStore.memory(), retained: this.retained() },
     };
   }
 }

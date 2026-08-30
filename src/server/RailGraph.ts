@@ -204,6 +204,11 @@ export class RailGraph {
   private readonly lon: number[] = [];
   /** Flattened triples: [nodeId, distKm, hours, …] */
   private readonly adj: number[][] = [];
+  /** What the path cache is holding, for the memory diagnostics. */
+  get cacheStats(): { paths: number; points: number } {
+    return { paths: this.pathCache.size, points: this.cachedPoints };
+  }
+
   private readonly index = new Map<string, number>();
   private readonly cells = new Map<string, number[]>();
   /**
@@ -217,6 +222,15 @@ export class RailGraph {
    */
   private readonly pathCache = new Map<string, RailPath | null>();
   private static readonly PATH_CACHE_MAX = 2500;
+  /**
+   * Vertices currently held by the cache.
+   *
+   * The cap is a count of paths, but the cost of a path is its length, and
+   * those differ by orders of magnitude: a suburban hop is a handful of
+   * vertices, Bordeaux–Paris is thousands. Tracked incrementally so the real
+   * figure is available without walking the cache.
+   */
+  private cachedPoints = 0;
 
   /** Thinned in-service network for drawing; built alongside the graph. */
   display: { type: 'FeatureCollection'; features: unknown[] } | null = null;
@@ -417,7 +431,8 @@ export class RailGraph {
     const ck = `${aLat.toFixed(4)},${aLon.toFixed(4)}|${bLat.toFixed(4)},${bLon.toFixed(4)}`;
     const hit = this.pathCache.get(ck);
     if (hit !== undefined) {
-      // Re-insert so frequently used legs survive eviction.
+      // Re-insert so frequently used legs survive eviction. The point count is
+      // unchanged: the same entry goes back in.
       this.pathCache.delete(ck);
       this.pathCache.set(ck, hit);
       return hit;
@@ -466,9 +481,11 @@ export class RailGraph {
       }
     }
     this.pathCache.set(ck, result);
+    this.cachedPoints += result?.pts.length ?? 0;
     while (this.pathCache.size > RailGraph.PATH_CACHE_MAX) {
       const oldest = this.pathCache.keys().next().value;
       if (oldest === undefined) break;
+      this.cachedPoints -= this.pathCache.get(oldest)?.pts.length ?? 0;
       this.pathCache.delete(oldest);
     }
     return result;
