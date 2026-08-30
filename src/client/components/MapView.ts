@@ -9,6 +9,7 @@
 
 import { Format } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
+import { Reckoner } from '../core/Reckoner.ts';
 import { Track } from '../core/Track.ts';
 import { Theme } from '../core/Theme.ts';
 import type { Api } from '../core/Api.ts';
@@ -64,7 +65,8 @@ export class MapView {
    * replaces the estimate.
    */
   private track: Track | null = null;
-  private moving: { distKm: number; kmh: number; since: number } | null = null;
+  private readonly reckoner = new Reckoner();
+  private animating = false;
   private raf: number | null = null;
 
   constructor(
@@ -221,6 +223,7 @@ export class MapView {
         });
       }
       this.pathFor = t.number;
+      this.reckoner.reset();
       const line = this.geo.features.find((f) => f.geometry.type === 'LineString');
       this.track = line
         ? new Track((line.geometry as { coordinates: number[][] }).coordinates)
@@ -256,13 +259,17 @@ export class MapView {
     const reduced =
       typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    this.showSpeed(kmh);
     if (!this.track || !kmh || p.geometry !== 'rail' || reduced) {
-      this.showSpeed(kmh);
+      this.reckoner.reset();
       return;
     }
 
-    this.moving = { distKm: this.track.distanceAt(p.lat, p.lon), kmh, since: performance.now() };
-    this.showSpeed(kmh);
+    // Hand the server's position to the reckoner rather than drawing it: it
+    // decides whether to blend the correction in or snap, so the train never
+    // jumps backwards to meet a late update.
+    this.reckoner.update(this.track.distanceAt(p.lat, p.lon), kmh, performance.now());
+    this.animating = true;
 
     // Twelve updates a second. A train at 300 km/h covers 7 m between them,
     // which is well under a pixel at the zooms this view uses, so the extra
@@ -271,8 +278,7 @@ export class MapView {
     let lastDrawn = 0;
 
     const step = (): void => {
-      const m = this.moving;
-      if (!m || !this.track || !this.marker) return;
+      if (!this.animating || !this.track || !this.marker) return;
 
       // Stop when the map is not on screen. The modal keeps its panels in the
       // DOM when you switch tab, so without this the loop would run on for as
@@ -285,10 +291,7 @@ export class MapView {
       const now = performance.now();
       if (now - lastDrawn >= MIN_GAP_MS) {
         lastDrawn = now;
-        // Recomputed from elapsed time rather than accumulated per frame, so a
-        // backgrounded tab — where the browser stops calling rAF — simply
-        // catches up on return instead of falling behind.
-        const here = this.track.at(m.distKm + m.kmh * ((now - m.since) / 3_600_000));
+        const here = this.track.at(this.reckoner.at(now));
         if (here) {
           this.marker.setLngLat([here.lon, here.lat]);
           const dir = this.marker.getElement().querySelector<HTMLElement>('.tm-dir');
@@ -305,7 +308,7 @@ export class MapView {
   private stopAnimation(): void {
     if (this.raf !== null) cancelAnimationFrame(this.raf);
     this.raf = null;
-    this.moving = null;
+    this.animating = false;
   }
 
   /** Current speed, on the map itself. */
@@ -372,5 +375,6 @@ export class MapView {
     this.marker = null;
     this.pathFor = null;
     this.track = null;
+    this.reckoner.reset();
   }
 }
