@@ -111,7 +111,55 @@ export class Track {
     return {
       lat: lat0 + (lat1 - lat0) * f,
       lon: lon0 + (lon1 - lon0) * f,
-      bearing: Track.bearing(lat0, lon0, lat1, lon1),
+      bearing: this.bearingAt(d),
+    };
+  }
+
+  /**
+   * Heading over a stretch of the line rather than one segment of it.
+   *
+   * Rail geometry is dense — a third of the segments on a real journey are
+   * under ten metres — and taking the heading of whichever one the train is
+   * standing on makes the direction marker twitch as it crosses them. Reading
+   * across a fixed distance instead averages that out, and the answer is the
+   * same on a straight where it matters.
+   */
+  private bearingAt(distKm: number): number {
+    const WINDOW_KM = 0.12;
+    const a = this.pointAt(Math.max(0, distKm - WINDOW_KM / 2));
+    const b = this.pointAt(Math.min(this.length, distKm + WINDOW_KM / 2));
+    if (!a || !b) return 0;
+    // Degenerate window — the whole line is shorter than it — so fall back to
+    // the ends, which is the only heading there is.
+    if (a.lat === b.lat && a.lon === b.lon) {
+      return Track.bearing(this.lat[0]!, this.lon[0]!, this.lat[this.lat.length - 1]!, this.lon[this.lon.length - 1]!);
+    }
+    return Track.bearing(a.lat, a.lon, b.lat, b.lon);
+  }
+
+  /** Plain position lookup, without the bearing — used by bearingAt itself. */
+  private pointAt(distKm: number): { lat: number; lon: number } | null {
+    const n = this.cum.length;
+    if (n < 2) return null;
+    const d = Math.max(0, Math.min(distKm, this.length));
+
+    // Binary search, not a scan: this runs twice per frame on lines of several
+    // thousand vertices, and it deliberately does not use the animation cursor
+    // — looking ahead and behind must not disturb where the train is.
+    let lo = 1;
+    let hi = n - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.cum[mid]! < d) lo = mid + 1;
+      else hi = mid;
+    }
+    const i = lo;
+    const a = this.cum[i - 1]!;
+    const span = this.cum[i]! - a;
+    const f = span > 0 ? (d - a) / span : 0;
+    return {
+      lat: this.lat[i - 1]! + (this.lat[i]! - this.lat[i - 1]!) * f,
+      lon: this.lon[i - 1]! + (this.lon[i]! - this.lon[i - 1]!) * f,
     };
   }
 

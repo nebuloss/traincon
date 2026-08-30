@@ -420,12 +420,6 @@ export class MapView {
     el.classList.toggle('is-stopped', !p.speedKmh);
     el.classList.toggle('is-coarse', p.geometry !== 'rail');
     el.classList.toggle('is-um', t.coupledWith.length > 0);
-    // Faster train, faster shiver: the period runs from a lazy 320 ms at a
-    // crawl down to 110 ms at line speed, so the marker's liveliness matches
-    // what it is doing.
-    const kmh = p.speedKmh ?? 0;
-    el.style.setProperty('--tm-period', `${Math.max(110, 320 - kmh * 0.7).toFixed(0)}ms`);
-
     el.style.color = Theme.token(
       tier === 'cancelled' ? 'dead' : tier === 'verylate' ? 'verylate' : tier === 'late' ? 'late' : 'ok',
     );

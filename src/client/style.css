@@ -776,32 +776,6 @@ i.sw.verylate { background: var(--verylate); } i.sw.cancelled { background: var(
   transition: transform .6s ease, opacity .3s;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45));
 }
-/*
- * A running train shivers.
- *
- * At the zooms this view uses, 300 km/h is a couple of pixels a second — a
- * live train looks exactly like a frozen one, which is precisely the doubt
- * this is meant to remove. The amplitude is well under a pixel so it reads as
- * life rather than as noise, and the period follows the speed, so a train
- * crawling into a terminus is visibly calmer than one at line speed.
- *
- * Transform only, so it stays on the compositor and costs no layout.
- */
-@keyframes train-running {
-  0%   { transform: translate(0, 0); }
-  20%  { transform: translate(0.45px, -0.3px); }
-  40%  { transform: translate(-0.35px, 0.4px); }
-  60%  { transform: translate(0.3px, 0.45px); }
-  80%  { transform: translate(-0.45px, -0.35px); }
-  100% { transform: translate(0, 0); }
-}
-.train-marker:not(.is-stopped) .tm-body {
-  animation: train-running var(--tm-period, .2s) linear infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .train-marker .tm-body { animation: none; }
-}
-
 .train-marker.is-stopped .tm-body { opacity: .82; }
 /* An interpolated position that is not on real track: say so by softening it. */
 .train-marker.is-coarse .tm-body { opacity: .6; border-style: dashed; }

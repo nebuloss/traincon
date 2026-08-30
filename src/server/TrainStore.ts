@@ -41,6 +41,83 @@ export interface ListFilter {
   q?: string;
 }
 
+/**
+ * Remove the places where a route doubles back on itself.
+ *
+ * Each leg is routed independently and the results are laid end to end, so
+ * where one leg's approach to a station and the next leg's departure from it
+ * disagree about the last few metres, the joined line reverses: it runs on,
+ * turns through nearly 180°, and comes back. Measured on a real TGV journey,
+ * 25 of about 5 000 vertices turned by more than 30° and the worst was a full
+ * 180.
+ *
+ * That is invisible as a drawn line — the spur is metres long — but a train
+ * advancing steadily along the line physically moves backwards and then
+ * forwards again as it crosses one. Which is exactly what it looks like.
+ *
+ * So a vertex is dropped when the path turns almost back on itself there and
+ * the spur is short. Real track has tight curves, but not a reversal inside
+ * 250 m; that is a routing artefact, not a railway.
+ */
+function despike(coords: [number, number][]): [number, number][] {
+  if (coords.length < 3) return coords;
+
+  const REVERSAL_COS = Math.cos((160 * Math.PI) / 180);
+  const SPUR_M = 250;
+
+  // Local, flat-earth metres: distances here are tens of metres, so the
+  // curvature of the planet is irrelevant and this avoids a trig call per
+  // vertex on a five-thousand-point line.
+  const mPerDegLat = 111_320;
+  const out: [number, number][] = [coords[0]!];
+
+  for (let i = 1; i < coords.length - 1; i++) {
+    const prev = out[out.length - 1]!;
+    const here = coords[i]!;
+    const next = coords[i + 1]!;
+
+    const mPerDegLon = mPerDegLat * Math.cos((here[1]! * Math.PI) / 180);
+    const ax = (here[0]! - prev[0]!) * mPerDegLon;
+    const ay = (here[1]! - prev[1]!) * mPerDegLat;
+    const bx = (next[0]! - here[0]!) * mPerDegLon;
+    const by = (next[1]! - here[1]!) * mPerDegLat;
+
+    const la = Math.hypot(ax, ay);
+    const lb = Math.hypot(bx, by);
+    if (la === 0) continue; // duplicate vertex, nothing to draw
+    if (lb === 0 || Math.min(la, lb) > SPUR_M) {
+      out.push(here);
+      continue;
+    }
+
+    // cos of the turn: -1 is a full reversal, +1 is straight on.
+    const cos = (ax * bx + ay * by) / (la * lb);
+    if (cos > REVERSAL_COS) out.push(here);
+  }
+
+  out.push(coords[coords.length - 1]!);
+  return out;
+}
+
+/**
+ * De-spike until it settles.
+ *
+ * Removing a vertex makes its neighbours adjacent, which can expose a
+ * reversal that was hidden behind it. On a real TGV journey one pass took 14
+ * reversals down to 6 and three passes to 3; the rest are joins where a leg
+ * with no routed geometry meets real track at an angle, which is the route's
+ * actual shape rather than an artefact.
+ */
+function smoothRoute(coords: [number, number][]): [number, number][] {
+  let out = coords;
+  for (let pass = 0; pass < 4; pass++) {
+    const next = despike(out);
+    if (next.length === out.length) break;
+    out = next;
+  }
+  return out;
+}
+
 export class TrainStore {
   private statics!: GtfsStatic;
   private rail: RailGraph | null = null;
@@ -463,7 +540,7 @@ export class TrainStore {
       features: [
         {
           type: 'Feature',
-          geometry: { type: 'LineString', coordinates: coords },
+          geometry: { type: 'LineString', coordinates: smoothRoute(coords) },
           properties: {
             number: train.number,
             legsWithGeometry: covered,
