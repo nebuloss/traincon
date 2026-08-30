@@ -19,23 +19,34 @@ import type { TrainDTO } from '../../shared/types.ts';
 type Aspect = NonNullable<TrainDTO['traffic']>['aspect'];
 type Kind = NonNullable<TrainDTO['traffic']>['signalKind'];
 
-/** The drawings, one per aspect a signal can show here. */
-export type SignalKey = 'libre' | 'avertissement' | 'semaphore' | 'carre';
+/**
+ * The drawings. Two panels, because a real signal has two: one that can show
+ * a carré carries five lamp positions, one that can only show a sémaphore
+ * carries the lower three. The suffix says which panel.
+ */
+export type SignalKey = 'vl' | 'a' | 'semaphore' | 'vl-carre' | 'a-carre' | 'carre';
 
 /**
  * The drawing for an aspect, or null when there is nothing to show.
  *
- * `inconnu` draws nothing at all: an unlit signal head would be a claim that
- * the signal is dark, which is a real and serious aspect of its own.
+ * `inconnu` draws nothing at all: an unlit head would be a claim that the
+ * signal is dark, which is a real and serious aspect of its own.
+ *
+ * The panel follows the signal, not the aspect, so it stays the same size as
+ * a train runs up to it and the picture does not jump. Where the kind is not
+ * known the shorter panel is drawn — the sémaphore is much the commoner
+ * signal on plain line — and its œilleton is left off rather than asserting a
+ * permissiveness nothing has established.
  */
 export function signalKey(aspect: Aspect, kind?: Kind): SignalKey | null {
+  const carre = kind === 'carre';
   switch (aspect) {
     case 'libre':
-      return 'libre';
+      return carre ? 'vl-carre' : 'vl';
     case 'avertissement':
-      return 'avertissement';
+      return carre ? 'a-carre' : 'a';
     case 'semaphore':
-      return kind === 'carre' ? 'carre' : 'semaphore';
+      return carre ? 'carre' : 'semaphore';
     default:
       return null;
   }

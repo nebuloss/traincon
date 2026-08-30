@@ -16,6 +16,9 @@
  *   sémaphore         one red, œilleton lit           stop, then pass at caution
  *   carré             two reds, œilleton out          absolute stop, may not be passed
  *
+ * Where each of those sits on the target, and which target, is the real
+ * arrangement rather than a guess — see the README beside the drawings.
+ *
  * So it is drawn as a real signal head: a black target (cible) on a mast, the
  * lit lens or lenses in place, the unlit ones left dark the way they look on
  * the ground. The carré's two reds are shown vertically, the commoner of the
@@ -33,9 +36,11 @@
  * Signalisation_ferroviaire_en_France for the œilleton's meaning.
  */
 
-import libreArt from '../assets/signal/libre.svg?raw';
-import avertissementArt from '../assets/signal/avertissement.svg?raw';
+import vlArt from '../assets/signal/vl.svg?raw';
+import aArt from '../assets/signal/a.svg?raw';
 import semaphoreArt from '../assets/signal/semaphore.svg?raw';
+import vlCarreArt from '../assets/signal/vl-carre.svg?raw';
+import aCarreArt from '../assets/signal/a-carre.svg?raw';
 import carreArt from '../assets/signal/carre.svg?raw';
 import { Format } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
@@ -48,9 +53,11 @@ type Kind = NonNullable<TrainDTO['traffic']>['signalKind'];
 
 /** The drawings, one per aspect — see assets/signal/README. */
 const ART: Readonly<Record<SignalKey, string>> = {
-  libre: libreArt,
-  avertissement: avertissementArt,
+  vl: vlArt,
+  a: aArt,
   semaphore: semaphoreArt,
+  'vl-carre': vlCarreArt,
+  'a-carre': aCarreArt,
   carre: carreArt,
 };
 

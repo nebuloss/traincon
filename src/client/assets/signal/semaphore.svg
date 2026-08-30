@@ -1,14 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 80" class="sig" aria-hidden="true" focusable="false">
-  <!-- Sémaphore: one red, and the œilleton lit on the mast. Stop, then pass
-       at caution — the white light is what says it may be passed at all. -->
-  <rect x="8" y="75" width="14" height="4" rx="1.5" fill="#4a525e"/>
-  <rect x="13" y="46" width="4" height="30" fill="#5b6472"/>
-  <circle cx="23.5" cy="53" r="3.6" fill="#f4f6fa" opacity=".22"/>
-  <circle cx="23.5" cy="53" r="2.6" fill="#f4f6fa" stroke="#0b0d11" stroke-width=".7"/>
-  <rect x="3" y="2" width="24" height="44" rx="5" fill="#14171d" stroke="#3a434f" stroke-width="1.4"/>
-  <circle cx="15" cy="12" r="5" fill="#23282f" stroke="#0b0d11" stroke-width="1"/>
-  <circle cx="15" cy="24" r="7" fill="#ef2f2f" opacity=".2"/>
-  <circle cx="15" cy="24" r="5" fill="#ef2f2f" stroke="#0b0d11" stroke-width=".8"/>
-  <circle cx="13.5" cy="22.5" r="1.5" fill="#fff" opacity=".5"/>
-  <circle cx="15" cy="36" r="5" fill="#23282f" stroke="#0b0d11" stroke-width="1"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 116" class="sig" aria-hidden="true" focusable="false">
+  <!-- Semaphore: one red, position 4, and the oeilleton lit on the support. Stop, then pass at caution - the white light is what says it may be passed at all. -->
+  <rect x="12" y="111" width="20" height="5" rx="1.5" fill="#4a525e"/>
+  <rect x="18.5" y="100" width="7" height="12" fill="#6b7480"/>
+  <circle cx="35" cy="104" r="5" fill="#f4f6fa" opacity=".24"/>
+  <circle cx="35" cy="104" r="3.5" fill="#f4f6fa"/>
+  <rect x="5" y="48" width="34" height="52" rx="9" fill="#0c0c0e" stroke="#eef1f5" stroke-width="2.2"/>
+  <circle cx="22" cy="58" r="5" fill="#333333"/>
+  <circle cx="22" cy="74" r="8" fill="#ff1a1a" opacity=".26"/>
+  <circle cx="22" cy="74" r="5" fill="#ff1a1a"/>
+  <circle cx="20.4" cy="72.4" r="1.5" fill="#fff" opacity=".55"/>
+  <circle cx="22" cy="90" r="5" fill="#333333"/>
 </svg>
