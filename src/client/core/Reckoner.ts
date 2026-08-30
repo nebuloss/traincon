@@ -1,82 +1,69 @@
 /**
- * Reconciles the animated position with the server's, without jumping.
+ * Keeps the drawn train from jumping.
  *
- * Dead reckoning between updates creates a problem it does not have on its
- * own: every thirty seconds a real position arrives, and it will not be where
- * the estimate had got to. Snapping to it makes the train teleport — forward
- * if the estimate lagged, backward if it ran ahead — which is worse than the
- * stationary marker this replaced, because it looks like the train physically
- * reversed.
+ * The map recomputes the train's position from the shared motion model twelve
+ * times a second, so between server updates it already agrees with the server
+ * — there is no drift to correct. What it cannot avoid is the model's *input*
+ * changing: when a refresh revises a leg's times, the modelled position moves,
+ * and following that instantly makes the train teleport. Backwards, if the
+ * delay grew, which reads as the train physically reversing.
  *
- * So a correction is never applied at once. The displayed position starts
- * exactly where it already was and converges onto the server's trajectory over
- * a few seconds. And it never moves backwards while the train is going
- * forwards: if the estimate overran, the train holds until the true position
- * catches up, which reads as a brief pause rather than a reversal.
+ * So the drawn position follows the modelled one rather than equalling it: it
+ * closes a fraction of the gap each frame, and never moves backwards while the
+ * train is running forwards. An overshoot waits to be caught up rather than
+ * sliding back.
  *
- * The one exception is a correction too large to blend away — a train
- * re-identified, or a feed revision moving it kilometres. Sliding smoothly
- * across that would be a lie about where it is, so it snaps and says so.
+ * A gap too large to be a revision of the same journey — a re-identified
+ * train, a different route — is taken at once. Easing across kilometres would
+ * be a lie about where the train is.
  */
 
-/** Errors bigger than this are a real revision, not drift. */
+/** Beyond this a gap is a different journey, not a revision of this one. */
 const SNAP_KM = 5;
-/** How long a blended correction takes to disappear. */
-const CONVERGE_MS = 4000;
+/** Roughly how long closing a gap takes. */
+const CONVERGE_MS = 1200;
+/** Below this the remaining gap is not worth easing; take it. */
+const SETTLE_KM = 0.005;
 
 export class Reckoner {
-  /** Server trajectory: distance at `since`, advancing at `kmh`. */
-  private base = 0;
-  private kmh = 0;
-  private since = 0;
-  /** Error carried at `since`, decayed to zero over CONVERGE_MS. */
-  private error = 0;
-  /** Last distance actually shown, so motion can be kept monotonic. */
   private shown: number | null = null;
 
-  /** Forget everything; the next update starts clean. */
+  /** Forget everything, so the next position is taken as-is. */
   reset(): void {
     this.shown = null;
-    this.error = 0;
-    this.kmh = 0;
+  }
+
+  /** The position currently drawn, or null before the first one. */
+  get current(): number | null {
+    return this.shown;
   }
 
   /**
-   * Take a fresh server position.
+   * Move towards `target`, and report where to draw.
    *
-   * @returns 'snap' when the correction was too large to blend, else 'blend'.
+   * @param target  where the model says the train is, in km along the route
+   * @param forward whether the train is running, which forbids going backwards
+   * @param dtMs    milliseconds since the last call
    */
-  update(distKm: number, kmh: number, now: number): 'snap' | 'blend' {
-    const first = this.shown === null;
-    const shown = first ? distKm : this.at(now);
-    const error = shown - distKm;
-
-    this.base = distKm;
-    this.kmh = kmh;
-    this.since = now;
-
-    if (first || Math.abs(error) > SNAP_KM) {
-      this.error = 0;
-      this.shown = distKm;
-      return 'snap';
+  follow(target: number, forward: boolean, dtMs: number): number {
+    const gap = this.shown === null ? Infinity : Math.abs(target - this.shown);
+    // Straight to it when there is nothing to hide: the first position, a jump
+    // too big to be this journey, or a gap already down to a few metres —
+    // easing that last bit only leaves a permanent lag behind the model.
+    if (this.shown === null || gap > SNAP_KM || (gap < SETTLE_KM && !(forward && target < this.shown))) {
+      this.shown = target;
+      return target;
     }
 
-    this.error = error;
-    this.shown = shown;
-    return 'blend';
-  }
+    // A fixed fraction of the remaining gap per unit time: fast while the gap
+    // is wide, imperceptible as it closes, and never overshooting.
+    const share = Math.min(1, Math.max(0, dtMs) / CONVERGE_MS);
+    let next = this.shown + (target - this.shown) * share;
 
-  /** Where to draw the train now. */
-  at(now: number): number {
-    if (this.shown === null) return this.base;
+    // Never reverse under power. A position that ran ahead waits for the model
+    // to reach it instead of sliding back to meet it.
+    if (forward && next < this.shown) next = this.shown;
 
-    const elapsed = Math.max(0, now - this.since);
-    const decay = Math.max(0, 1 - elapsed / CONVERGE_MS);
-    const wanted = this.base + this.kmh * (elapsed / 3_600_000) + this.error * decay;
-
-    // Never reverse while running forward. An overshooting estimate waits for
-    // the true position to reach it instead of sliding back to meet it.
-    const next = this.kmh > 0 ? Math.max(this.shown, wanted) : wanted;
     this.shown = next;
     return next;
   }

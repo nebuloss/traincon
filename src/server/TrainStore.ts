@@ -13,6 +13,7 @@ import path from 'node:path';
 import { GtfsStatic, serviceMeta } from './GtfsStatic.ts';
 import { FeedClient, type RawTrain } from './FeedClient.ts';
 import { RailGraph } from './RailGraph.ts';
+import { sampleProfile } from '../shared/motion.ts';
 import { Train } from './Train.ts';
 import { CouplingDetector, type CouplingResult } from './CouplingDetector.ts';
 import { DailyBoard } from './DailyBoard.ts';
@@ -431,6 +432,11 @@ export class TrainStore {
 
   journeyGeo(train: TrainDTO): JourneyGeo {
     const coords: [number, number][] = [];
+    // One motion profile per leg, so the map can run the same model the
+    // server does — see src/shared/motion.ts. Without it the client can only
+    // assume constant speed, which drifts from the server's answer by
+    // kilometres on a leg with real acceleration and braking.
+    const legProfiles: number[][] = [];
     let covered = 0;
     let total = 0;
     for (let i = 0; i < train.calls.length - 1; i++) {
@@ -444,8 +450,12 @@ export class TrainStore {
           const last = coords[coords.length - 1];
           if (!last || last[0] !== lon || last[1] !== lat) coords.push([lon, lat]);
         }
+        // Four decimals is a ten-thousandth of a leg: centimetres on the
+        // longest of them, and it keeps the payload to a few kilobytes.
+        legProfiles.push(sampleProfile(leg.cum, leg.cumT).map((x) => Math.round(x * 1e4) / 1e4));
       } else {
         coords.push([a.lon, a.lat], [b.lon, b.lat]);
+        legProfiles.push([]);
       }
     }
     return {
@@ -454,7 +464,12 @@ export class TrainStore {
         {
           type: 'Feature',
           geometry: { type: 'LineString', coordinates: coords },
-          properties: { number: train.number, legsWithGeometry: covered, legs: total },
+          properties: {
+            number: train.number,
+            legsWithGeometry: covered,
+            legs: total,
+            legProfiles,
+          },
         },
         ...train.calls.map((c, i) => ({
           type: 'Feature' as const,

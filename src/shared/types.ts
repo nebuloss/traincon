@@ -276,7 +276,19 @@ export interface FeatureCollection<F> {
 
 export type JourneyLine = Feature<
   LineStringGeom,
-  { number: string; legsWithGeometry: number; legs: number }
+  {
+    number: string;
+    legsWithGeometry: number;
+    legs: number;
+    /**
+     * One motion profile per leg, in call order — see shared/motion.ts.
+     *
+     * Lets the map compute positions with the same model the server uses,
+     * rather than assuming constant speed between updates. Empty for a leg
+     * with no routed geometry.
+     */
+    legProfiles?: number[][];
+  }
 >;
 export type JourneyStop = Feature<
   PointGeom,

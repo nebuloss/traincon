@@ -11,6 +11,7 @@ import { Format } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
 import { Reckoner } from '../core/Reckoner.ts';
 import { Track } from '../core/Track.ts';
+import { distanceFraction } from '../../shared/motion.ts';
 import { Theme } from '../core/Theme.ts';
 import type { Api } from '../core/Api.ts';
 import type { JourneyGeo, JourneyLine, TrainDTO } from '../../shared/types.ts';
@@ -65,6 +66,10 @@ export class MapView {
    * replaces the estimate.
    */
   private track: Track | null = null;
+  /** Distance along `track` of each call, so a leg's extent is known. */
+  private stopKm: number[] = [];
+  /** Motion profile per leg, from the server — see shared/motion.ts. */
+  private legProfiles: number[][] = [];
   private readonly reckoner = new Reckoner();
   private animating = false;
   private raf: number | null = null;
@@ -228,6 +233,15 @@ export class MapView {
       this.track = line
         ? new Track((line.geometry as { coordinates: number[][] }).coordinates)
         : null;
+      this.legProfiles =
+        (line?.properties as { legProfiles?: number[][] } | undefined)?.legProfiles ?? [];
+
+      // Where each call sits along the drawn route, so the animation knows the
+      // extent of the leg it is interpolating within. Linear in the number of
+      // vertices per stop, run once when a train's route is loaded.
+      this.stopKm = this.track
+        ? t.calls.map((c) => this.track!.distanceAt(c.lat, c.lon))
+        : [];
       this.frame(t, mode, true);
     } else if (reframe) {
       this.frame(t, mode, false);
@@ -260,20 +274,16 @@ export class MapView {
       typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     this.showSpeed(kmh);
-    if (!this.track || !kmh || p.geometry !== 'rail' || reduced) {
+    if (!this.track || !kmh || p.geometry !== 'rail' || reduced || this.stopKm.length < 2) {
       this.reckoner.reset();
       return;
     }
 
-    // Hand the server's position to the reckoner rather than drawing it: it
-    // decides whether to blend the correction in or snap, so the train never
-    // jumps backwards to meet a late update.
-    this.reckoner.update(this.track.distanceAt(p.lat, p.lon), kmh, performance.now());
     this.animating = true;
 
     // Twelve updates a second. A train at 300 km/h covers 7 m between them,
-    // which is well under a pixel at the zooms this view uses, so the extra
-    // frames a 60 Hz loop would draw are repaints nobody can see.
+    // which is under a pixel at the zooms this view uses, so the extra frames
+    // a 60 Hz loop would draw are repaints nobody can see.
     const MIN_GAP_MS = 80;
     let lastDrawn = 0;
 
@@ -288,21 +298,53 @@ export class MapView {
         return;
       }
 
-      const now = performance.now();
-      if (now - lastDrawn >= MIN_GAP_MS) {
-        lastDrawn = now;
-        const here = this.track.at(this.reckoner.at(now));
-        if (here) {
-          this.marker.setLngLat([here.lon, here.lat]);
-          const dir = this.marker.getElement().querySelector<HTMLElement>('.tm-dir');
-          if (dir) {
-            dir.style.transform = `rotate(${here.bearing}deg) translateY(calc(-1 * var(--tm-orbit)))`;
+      const frameAt = performance.now();
+      if (frameAt - lastDrawn >= MIN_GAP_MS) {
+        const sinceLast = lastDrawn === 0 ? MIN_GAP_MS : frameAt - lastDrawn;
+        lastDrawn = frameAt;
+        const km = this.modelledKm(t, Date.now() / 1000);
+        if (km !== null) {
+          const here = this.track.at(this.reckoner.follow(km, kmh > 0, sinceLast));
+          if (here) {
+            this.marker.setLngLat([here.lon, here.lat]);
+            const dir = this.marker.getElement().querySelector<HTMLElement>('.tm-dir');
+            if (dir) {
+              dir.style.transform = `rotate(${here.bearing}deg) translateY(calc(-1 * var(--tm-orbit)))`;
+            }
           }
         }
       }
       this.raf = requestAnimationFrame(step);
     };
     this.raf = requestAnimationFrame(step);
+  }
+
+  /**
+   * Where the model puts this train right now, in km along the route.
+   *
+   * The same computation the server performs — find the leg, take the elapsed
+   * fraction of its scheduled duration, and read the leg's motion profile — so
+   * the map is not approximating the server's answer between updates, it is
+   * recomputing it. Returns null when the train is not between two calls.
+   */
+  private modelledKm(t: TrainDTO, nowSec: number): number | null {
+    const calls = t.calls;
+    for (let i = 0; i < calls.length - 1; i++) {
+      const a = calls[i]!;
+      const b = calls[i + 1]!;
+      if (nowSec < a.time || nowSec > b.time) continue;
+
+      const span = b.time - a.time;
+      if (span <= 0) return this.stopKm[i] ?? null;
+
+      const from = this.stopKm[i];
+      const to = this.stopKm[i + 1];
+      if (from === undefined || to === undefined) return null;
+
+      const f = distanceFraction(this.legProfiles[i], (nowSec - a.time) / span);
+      return from + (to - from) * f;
+    }
+    return null;
   }
 
   private stopAnimation(): void {
