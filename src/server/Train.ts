@@ -188,7 +188,10 @@ export class Train {
       observation: obs,
     };
 
-    const railPath: RailPath | null = graph ? graph.path(a.lat, a.lon, b.lat, b.lon) : null;
+    // Only a high-speed train may be routed over a high-speed line.
+    const railPath: RailPath | null = graph
+      ? graph.path(a.lat, a.lon, b.lat, b.lon, this.family === 'tgv')
+      : null;
     if (railPath) {
       const pt = RailGraph.at(railPath, basis === 'arrived' ? 1 : f);
       const legHours = (leg.span ?? 0) / 3600;

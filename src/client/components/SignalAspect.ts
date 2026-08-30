@@ -23,93 +23,47 @@
  * marks a signal as passable — extinguished when a carré is closed, which is
  * exactly the difference the icon needs to carry.
  *
+ * The drawings are files, in assets/signal, rather than assembled here. They
+ * were generated once and the lamp positions were wrong: spaced closer than
+ * their own diameter, so consecutive lenses overlapped and the three
+ * positions could not be told apart. Artwork can be looked at.
+ *
  * Sources: SNCF S 1 A "Signalisation au sol"; the aspect list at
  * modelisme58.fr/outils/feux-sncf-cible; fr.wikipedia.org/wiki/
  * Signalisation_ferroviaire_en_France for the œilleton's meaning.
  */
 
+import libreArt from '../assets/signal/libre.svg?raw';
+import avertissementArt from '../assets/signal/avertissement.svg?raw';
+import semaphoreArt from '../assets/signal/semaphore.svg?raw';
+import carreArt from '../assets/signal/carre.svg?raw';
 import { Format } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
+import { signalKey } from '../core/SignalArt.ts';
+import type { SignalKey } from '../core/SignalArt.ts';
 import type { TrainDTO } from '../../shared/types.ts';
 
 type Aspect = NonNullable<TrainDTO['traffic']>['aspect'];
 type Kind = NonNullable<TrainDTO['traffic']>['signalKind'];
 
-/** Lens colours, as a signal actually burns rather than as a UI palette. */
-const LENS = {
-  green: '#22c55e',
-  yellow: '#f2c009',
-  red: '#ef2f2f',
-  white: '#f4f6fa',
-  /** An unlit lens: dark, but not the black of the target behind it. */
-  out: '#252a33',
+/** The drawings, one per aspect — see assets/signal/README. */
+const ART: Readonly<Record<SignalKey, string>> = {
+  libre: libreArt,
+  avertissement: avertissementArt,
+  semaphore: semaphoreArt,
+  carre: carreArt,
 };
-
-/**
- * Unique per rendering, because the glow is clipped to the target and a
- * clipPath needs an id. Two of these can be on the page at once — the
- * overview and the map foot — and repeated ids would cross-reference.
- */
-let seq = 0;
-
-/** The three lamp positions on the simplified target, top to bottom. */
-const ROW = { top: 9, mid: 14.5, bottom: 20 };
-
-/** One lens, with the halo a lit lamp throws. */
-function lens(cy: number, colour: string, lit: boolean, r = 4.4): string {
-  if (!lit) {
-    return `<circle cx="13" cy="${cy}" r="${r}" fill="${LENS.out}" stroke="#0b0d11" stroke-width="1"/>`;
-  }
-  return (
-    `<circle cx="13" cy="${cy}" r="${r * 1.85}" fill="${colour}" opacity=".22"/>` +
-    `<circle cx="13" cy="${cy}" r="${r}" fill="${colour}" stroke="#0b0d11" stroke-width=".8"/>` +
-    // A brighter spot, so the lens reads as glass with a lamp behind it.
-    `<circle cx="${13 - r * 0.3}" cy="${cy - r * 0.3}" r="${r * 0.3}" fill="#fff" opacity=".5"/>`
-  );
-}
 
 /**
  * The signal head for an aspect.
  *
  * `kind` is the signal the train is actually approaching, where the
  * signalling layer knows it. Without it a stop is drawn as a sémaphore, the
- * commoner signal by far on plain line — but the œilleton is then left out
- * rather than guessed at, since it is the thing that distinguishes them.
+ * commoner signal by far on plain line.
  */
 export function signalIcon(aspect: Aspect, kind?: Kind): string {
-  const carre = aspect === 'semaphore' && kind === 'carre';
-  const stop = aspect === 'semaphore';
-
-  const lamps = carre
-    ? lens(ROW.top, LENS.red, true) + lens(ROW.mid, LENS.out, false) + lens(ROW.bottom, LENS.red, true)
-    : lens(ROW.top, LENS.out, false) +
-      lens(
-        ROW.mid,
-        aspect === 'libre' ? LENS.green : aspect === 'avertissement' ? LENS.yellow : LENS.red,
-        aspect !== 'inconnu',
-      ) +
-      lens(ROW.bottom, LENS.out, false);
-
-  // Lit on a sémaphore, out on a carré, absent when the kind is unknown —
-  // which is the honest reading, since it is the mark of permissiveness.
-  const oeilleton =
-    stop && kind
-      ? `<circle cx="20.4" cy="30" r="1.9" fill="${carre ? LENS.out : LENS.white}" stroke="#0b0d11" stroke-width=".7"/>`
-      : '';
-
-  // The glow is clipped to the target: a lens throws its light forward, and
-  // left unclipped the bottom lamp's halo washes down over the mast.
-  const clip = `sig-cible-${++seq}`;
-
-  return `
-    <svg class="sig" viewBox="0 0 26 40" width="26" height="40" aria-hidden="true" focusable="false">
-      <defs><clipPath id="${clip}"><rect x="3" y="1" width="20" height="25" rx="4"/></clipPath></defs>
-      <rect x="9.5" y="33.5" width="7" height="2.6" rx="1" fill="#4a525e"/>
-      <rect x="11.4" y="25" width="3.2" height="9" fill="#5b6472"/>
-      ${oeilleton}
-      <rect x="3" y="1" width="20" height="25" rx="4" fill="#14171d" stroke="#39414d" stroke-width="1.2"/>
-      <g clip-path="url(#${clip})">${lamps}</g>
-    </svg>`;
+  const key = signalKey(aspect, kind);
+  return key ? ART[key] : '';
 }
 
 /** Whether this aspect is worth showing at all. */

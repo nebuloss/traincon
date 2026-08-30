@@ -264,6 +264,12 @@ export function speedAndTime(
   return { v: kmh, cumT };
 }
 
+/**
+ * At or above this, a line is a LGV — a high-speed line, closed to ordinary
+ * traffic. The exported geometry marks the same sections with `hs`.
+ */
+export const FAST_KMH = 250;
+
 export class RailGraph {
   private readonly lat: number[] = [];
   private readonly lon: number[] = [];
@@ -492,7 +498,7 @@ export class RailGraph {
    * Fastest path (least travel time over line speeds), as node ids.
    * Minimising time rather than distance is what puts a TGV on the LGV.
    */
-  route(from: number, to: number, maxHours = 14): number[] | null {
+  route(from: number, to: number, maxHours = 14, allowFast = true): number[] | null {
     if (from === to) return [from];
     const dist = new Float64Array(this.lat.length).fill(Infinity);
     const prev = new Int32Array(this.lat.length).fill(-1);
@@ -511,6 +517,12 @@ export class RailGraph {
       for (let i = 0; i < a.length; i += 3) {
         const v = a[i]!;
         const w = a[i + 2]!;
+        // A train that is not allowed on a high-speed line must not be routed
+        // along one. The router minimises time, so given the chance it will
+        // put anything on the fastest track near it — which is how a TER from
+        // Moulins to Montchanin came to be running on the LGV Sud-Est past
+        // Le Creusot, and reporting a 300 km/h limit.
+        if (!allowFast && a[i + 1]! / w >= FAST_KMH) continue;
         const nd = d + w;
         if (nd < dist[v]!) {
           dist[v] = nd;
@@ -529,8 +541,16 @@ export class RailGraph {
    * Track-following polyline between two coordinates, with cumulative distance
    * and time so a position can be looked up by elapsed fraction.
    */
-  path(aLat: number, aLon: number, bLat: number, bLon: number): RailPath | null {
-    const ck = `${aLat.toFixed(4)},${aLon.toFixed(4)}|${bLat.toFixed(4)},${bLon.toFixed(4)}`;
+  path(
+    aLat: number,
+    aLon: number,
+    bLat: number,
+    bLon: number,
+    allowFast = true,
+  ): RailPath | null {
+    const ck = `${aLat.toFixed(4)},${aLon.toFixed(4)}|${bLat.toFixed(4)},${bLon.toFixed(4)}|${
+      allowFast ? 'f' : 'c'
+    }`;
     const hit = this.pathCache.get(ck);
     if (hit !== undefined) {
       // Re-insert so frequently used legs survive eviction. The point count is
@@ -545,7 +565,11 @@ export class RailGraph {
     let result: RailPath | null = null;
 
     if (A && B) {
-      const ids = this.route(A.id, B.id);
+      // Kept off the high-speed lines where the train does not belong, but
+      // not at the price of no route at all: the network data has gaps, and a
+      // leg that only connects through an LGV is better drawn on the LGV than
+      // reduced to a straight line across country.
+      const ids = this.route(A.id, B.id, 14, allowFast) ?? (allowFast ? null : this.route(A.id, B.id));
       if (ids) {
         const pts: Array<[number, number]> = ids.map((i) => [this.lat[i]!, this.lon[i]!]);
         // Line speed of each routed segment, recovered from the graph edges.
@@ -668,7 +692,7 @@ export class RailGraph {
             type: 'LineString',
             coordinates: pts.map((c) => [Math.round(c[0]! * 1e5) / 1e5, Math.round(c[1]! * 1e5) / 1e5]),
           },
-          properties: { v, hs: v >= 250 ? 1 : 0 },
+          properties: { v, hs: v >= FAST_KMH ? 1 : 0 },
         });
       }
     }

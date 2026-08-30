@@ -479,8 +479,12 @@ export class MapView {
               // real track layout is the better answer, and a fat centreline
               // drawn across six platform roads is actively misleading. Kept
               // faintly rather than dropped, so the route is still traceable.
-              'line-width': ['interpolate', ['linear'], ['zoom'], 14, 3.5, 17, 1.5],
-              'line-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0.9, 16.5, 0.22],
+              // Gone by the time the drawn track and the train itself are
+              // there to look at. It is a schematic centreline: one stroke for
+              // the whole railway, so close in it lies across every platform
+              // road at once and disagrees with the track under it.
+              'line-width': ['interpolate', ['linear'], ['zoom'], 14, 3.5, 16, 1.2],
+              'line-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0.9, 15, 0.45, 16, 0.15],
             },
           },
           underTrain,

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 80" class="sig" aria-hidden="true" focusable="false">
+  <!-- Voie libre: one green. Run on. -->
+  <rect x="8" y="75" width="14" height="4" rx="1.5" fill="#4a525e"/>
+  <rect x="13" y="46" width="4" height="30" fill="#5b6472"/>
+  <rect x="3" y="2" width="24" height="44" rx="5" fill="#14171d" stroke="#3a434f" stroke-width="1.4"/>
+  <circle cx="15" cy="12" r="5" fill="#23282f" stroke="#0b0d11" stroke-width="1"/>
+  <circle cx="15" cy="24" r="7" fill="#22c55e" opacity=".2"/>
+  <circle cx="15" cy="24" r="5" fill="#22c55e" stroke="#0b0d11" stroke-width=".8"/>
+  <circle cx="13.5" cy="22.5" r="1.5" fill="#fff" opacity=".5"/>
+  <circle cx="15" cy="36" r="5" fill="#23282f" stroke="#0b0d11" stroke-width="1"/>
+</svg>
