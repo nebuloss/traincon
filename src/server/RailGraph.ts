@@ -71,8 +71,16 @@ export interface PathPoint extends LatLon {
   /** Distance travelled along the path, km. */
   distKm: number;
   segIndex: number;
+  /**
+   * Modelled speed here, km/h — what the profile says the train is doing.
+   *
+   * Distinct from limitKmh, which is what the line permits. Conflating the two
+   * was a mistake: the scaling that turns a nominal profile into a real speed
+   * needs the former, and anything shown to a reader wants the latter.
+   */
+  modelKmh: number | null;
   /** Permitted line speed here, km/h. */
-  lineKmh: number | null;
+  limitKmh: number | null;
   /** Nominal time for the whole path at line speed, hours. */
   nominalHours: number | null;
 }
@@ -615,7 +623,10 @@ export class RailGraph {
     // reported is exactly what produced the timing.
     const va = p.v[i - 1];
     const vb = p.v[i];
-    const lineKmh = va == null || vb == null ? null : Math.round(va + (vb - va) * t);
+    const modelKmh = va == null || vb == null ? null : Math.round(va + (vb - va) * t);
+    // What the line itself permits, which is a property of the track rather
+    // than of this train.
+    const limitKmh = p.segV[i - 1] ?? null;
 
     return {
       lat: la + (lb - la) * t,
@@ -623,7 +634,8 @@ export class RailGraph {
       bearing: bearing({ lat: la, lon: lo }, { lat: lb, lon: lb2 }),
       distKm: target,
       segIndex: i,
-      lineKmh,
+      modelKmh,
+      limitKmh,
       nominalHours: p.cumT[p.cumT.length - 1] ?? null,
     };
   }

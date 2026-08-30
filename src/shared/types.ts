@@ -84,7 +84,11 @@ export interface Position {
   /** Average over the leg, for comparison. */
   avgKmh?: number;
   /** Permitted line speed at this point. */
-  lineKmh?: number | null;
+  /**
+   * What the line permits here, km/h — a property of the track, not of this
+   * train. Shown on the map beside the train's own speed.
+   */
+  limitKmh?: number | null;
   geometry: 'rail' | 'direct';
   observation: Observation;
   quality: PositionQuality;

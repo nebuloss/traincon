@@ -273,7 +273,7 @@ export class MapView {
     const reduced =
       typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    this.showSpeed(kmh);
+    this.showSpeed(kmh, p.limitKmh);
     if (!this.track || !kmh || p.geometry !== 'rail' || reduced || this.stopKm.length < 2) {
       this.reckoner.reset();
       return;
@@ -356,12 +356,32 @@ export class MapView {
     this.animating = false;
   }
 
-  /** Current speed, on the map itself. */
-  private showSpeed(kmh: number): void {
-    const el = document.getElementById('mapSpeed');
-    if (!el) return;
-    el.textContent = kmh ? tr('map.speed', { kmh: String(Math.round(kmh)) }) : tr('map.stopped');
-    el.classList.toggle('is-stopped', !kmh);
+  /**
+   * Current speed, and what the line permits here.
+   *
+   * The limit is a property of the track rather than of the train, so it is
+   * drawn as the roundel it is on the ground rather than as more text — and
+   * hidden entirely where the geometry cannot say, rather than guessed at.
+   */
+  private showSpeed(kmh: number, limitKmh: number | null | undefined): void {
+    const speed = document.getElementById('mapSpeed');
+    if (speed) {
+      speed.textContent = kmh ? tr('map.speed', { kmh: String(Math.round(kmh)) }) : tr('map.stopped');
+      speed.classList.toggle('is-stopped', !kmh);
+    }
+
+    const limit = document.getElementById('mapLimit');
+    if (!limit) return;
+    if (limitKmh == null || limitKmh <= 0) {
+      limit.hidden = true;
+      return;
+    }
+    limit.hidden = false;
+    limit.textContent = String(Math.round(limitKmh));
+    limit.title = tr('map.limit', { kmh: String(Math.round(limitKmh)) });
+    // Marked when the train is at or near what the line allows, which is the
+    // interesting case: it is going as fast as it is permitted to.
+    limit.classList.toggle('at-limit', kmh >= limitKmh * 0.95);
   }
 
   private drawMarker(t: TrainDTO): void {

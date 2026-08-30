@@ -200,8 +200,8 @@ export class Train {
       if (basis === 'between' && legHours > 0) {
         const nominal = pt.nominalHours;
         speedKmh =
-          nominal && nominal > 0 && pt.lineKmh != null
-            ? Math.round(pt.lineKmh * (nominal / legHours))
+          nominal && nominal > 0 && pt.modelKmh != null
+            ? Math.round(pt.modelKmh * (nominal / legHours))
             : Math.round(railPath.total / legHours);
       }
 
@@ -214,7 +214,7 @@ export class Train {
         distKm: Math.round(pt.distKm * 10) / 10,
         speedKmh,
         avgKmh: legHours > 0 ? Math.round(railPath.total / legHours) : 0,
-        lineKmh: pt.lineKmh,
+        limitKmh: pt.limitKmh,
         geometry: 'rail',
         quality: {
           method: 'rail_graph_speed_profile',

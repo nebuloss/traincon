@@ -792,6 +792,28 @@ i.sw.verylate { background: var(--verylate); } i.sw.cancelled { background: var(
 }
 .map-speed.is-stopped { color: var(--muted); font-weight: 500; }
 
+/*
+ * The line's own limit, drawn as the roundel it is on the ground: a red ring
+ * around the number. It says something about the track rather than the train,
+ * so it should not read as another figure in the same row of text.
+ */
+.speed-limit {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: #fff; color: #111;
+  border: 3.5px solid var(--bad);
+  font-size: 11.5px; font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+/* Running at what the line allows — worth marking, since that is the case
+   where the limit is actually constraining the train. */
+.speed-limit.at-limit { box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 30%, transparent); }
+
+@media (min-width: 700px) {
+  .speed-limit { width: 34px; height: 34px; font-size: 13px; border-width: 4px; }
+}
+
 .maplibregl-popup-content {
   background: var(--panel); color: var(--fg); border-radius: 10px;
   font-size: 13px; padding: 10px 12px; box-shadow: var(--shadow);
