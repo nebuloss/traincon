@@ -223,3 +223,37 @@ test('a token used by the map is defined for the dark theme too', () => {
     assert.ok(dark.includes(`--${name}:`), `--${name} has no dark-theme value`);
   }
 });
+
+test('the camera aims at where the train is drawn, not where it was reported', () => {
+  // These are different places. The reported point is projected onto the
+  // drawn route, and between refreshes the train is advanced along it by dead
+  // reckoning — two and a half kilometres of it at line speed with thirty
+  // seconds between updates. Centring on the reported point walked the map
+  // off the train every time it refreshed.
+  const centres = [...src.matchAll(/center: ([^\n]*)/g)].map((m) => m[1].trim());
+  assert.ok(centres.length >= 2, 'expected the map to centre somewhere');
+  let checked = 0;
+  for (const c of centres) {
+    // The map's own opening view is a fixed pair of numbers — the middle of
+    // France, before there is any train to look at.
+    if (/^\[[\d.-]+, [\d.-]+\],?$/.test(c)) continue;
+    checked++;
+    const ok = c.includes('drawnPoint()') || c.startsWith('at,');
+    assert.ok(ok, `centres on ${c} without asking where the train is drawn`);
+  }
+  assert.ok(checked >= 2, 'expected at least the framing and the follow paths');
+});
+
+test('the train is chased between refreshes, not only on one', () => {
+  // Without this it ran off the edge and stayed there until the next update.
+  assert.match(src, /this\.keepInSight\(\[here\.lon, here\.lat\]\)/, 'from the animation loop');
+  assert.match(src, /this\.map\.on\('moveend'/, 'and once a gesture settles');
+});
+
+test('chasing the train never fights the user mid-gesture', () => {
+  // A pinch zooms about the fingers and so moves the centre; snapping it back
+  // on every frame makes zooming feel broken.
+  const keep = src.slice(src.indexOf('private keepInSight('));
+  assert.match(keep.slice(0, 400), /this\.map\.isMoving\(\)/, 'stands down while the map moves');
+  assert.match(keep.slice(0, 600), /outsideMiddle\(/, 'and only acts at the edge of the view');
+});

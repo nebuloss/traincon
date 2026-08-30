@@ -14,6 +14,7 @@ import { Track } from '../core/Track.ts';
 import { aspectLamp } from './SignalAspect.ts';
 import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM } from './TrainIcon.ts';
 import { trainCars } from '../core/TrainBody.ts';
+import { outsideMiddle } from '../core/Viewport.ts';
 import { ensureLivery, iconScale } from '../core/TrainArt.ts';
 import { distanceFraction } from '../../shared/motion.ts';
 import { Theme } from '../core/Theme.ts';
@@ -39,6 +40,9 @@ interface MapLike {
   easeTo(o: unknown): void;
   fitBounds(b: unknown, o: unknown): void;
   getZoom(): number;
+  project(lngLat: [number, number]): { x: number; y: number };
+  isMoving(): boolean;
+  getContainer(): HTMLElement;
   resize(): void;
 }
 interface MarkerLike {
@@ -70,6 +74,8 @@ export class MapView {
   private drawnKm: number | null = null;
   /** Liveries whose artwork has been handed to the map already. */
   private readonly liveries = new Set<string>();
+  /** Whether the view is meant to keep the train in sight. */
+  private following = false;
   private theme: 'light' | 'dark' | null = null;
   private pathFor: string | null = null;
   private geo: JourneyGeo | null = null;
@@ -133,6 +139,14 @@ export class MapView {
     // position for a frame, which is visible as a stutter while pinching.
     this.map.on('zoom', () => {
       if (this.drawn) this.drawBody(this.drawn, this.drawnKm);
+    });
+    // A pinch zooms about the fingers, not about the train, so the train can
+    // end up off to one side or off the screen entirely. Once the movement
+    // settles, bring it back — this also covers a stopped train, which runs
+    // no animation loop to notice for itself.
+    this.map.on('moveend', () => {
+      const at = this.drawnPoint();
+      if (at) this.keepInSight(at);
     });
     await new Promise<void>((r) => this.map!.on('load', () => r()));
     this.addRailLayers();
@@ -414,15 +428,32 @@ export class MapView {
     const want = MapView.zoomForSpeed(t.position.speedKmh);
     this.lastAutoZoom = want;
     this.map.easeTo({
-      center: [t.position.lon, t.position.lat],
+      center: this.drawnPoint() ?? [t.position.lon, t.position.lat],
       zoom: want,
       duration: initial ? 0 : 700,
     });
   }
 
+  /**
+   * Where the train is actually drawn, as [lon, lat].
+   *
+   * Not the same as the position the server reported, and at these zooms the
+   * difference is the whole screen. Two things move it: the reported point is
+   * projected onto the drawn route so it sits on its own line, and between
+   * refreshes the train is advanced along that route by dead reckoning — at
+   * 300 km/h and thirty seconds between updates, two and a half kilometres of
+   * it. Centring on the reported point put the train off the edge of the view.
+   */
+  private drawnPoint(): [number, number] | null {
+    if (!this.track || this.drawnKm === null) return null;
+    const here = this.track.at(this.drawnKm);
+    return here ? [here.lon, here.lat] : null;
+  }
+
   /** Redraw for a train; `reframe` forces the framing rule to reapply. */
   async show(t: TrainDTO, mode: MapMode, follow: boolean, reframe: boolean): Promise<void> {
     if (!this.map) return;
+    this.following = follow;
     const p = t.position;
 
     if (this.pathFor !== t.number) {
@@ -494,7 +525,11 @@ export class MapView {
       const want = MapView.zoomForSpeed(p.speedKmh);
       const cur = this.map.getZoom();
       const auto = Math.abs(cur - (this.lastAutoZoom ?? cur)) < 0.35;
-      this.map.easeTo({ center: [p.lon, p.lat], zoom: auto ? want : cur, duration: 900 });
+      this.map.easeTo({
+        center: this.drawnPoint() ?? [p.lon, p.lat],
+        zoom: auto ? want : cur,
+        duration: 900,
+      });
       if (auto) this.lastAutoZoom = want;
     }
 
@@ -561,6 +596,7 @@ export class MapView {
           this.drawBody(t, drawKm);
           if (here) {
             this.marker.setLngLat([here.lon, here.lat]);
+            this.keepInSight([here.lon, here.lat]);
             const dir = this.marker.getElement().querySelector<HTMLElement>('.tm-dir');
             if (dir) {
               dir.style.transform = `rotate(${here.bearing}deg) translateY(calc(-1 * var(--tm-orbit)))`;
@@ -668,6 +704,25 @@ export class MapView {
     const mpp = metresPerPixel(zoom, here?.lat ?? 47);
     this.map.setLayoutProperty('train-cars', 'icon-size', iconScale(mpp));
     src.setData(trainCars(this.track!, km!, trainLengthM(t), t.family, livery, 24));
+  }
+
+  /**
+   * Pan after the train when it is about to leave the view.
+   *
+   * The rule for when is in core/Viewport. Beyond it, this never acts while
+   * the map is already moving, which covers both the user's own gestures and
+   * the easing this itself starts.
+   */
+  private keepInSight(at: [number, number]): void {
+    if (!this.following || !this.map || this.map.isMoving()) return;
+    const box = this.map.getContainer();
+    const w = box.clientWidth;
+    const h = box.clientHeight;
+    if (!w || !h) return;
+
+    const p = this.map.project(at);
+    if (!outsideMiddle(p.x, p.y, w, h)) return;
+    this.map.easeTo({ center: at, duration: 600 });
   }
 
   private stopAnimation(): void {
@@ -780,6 +835,7 @@ export class MapView {
     this.track = null;
     this.drawn = null;
     this.drawnKm = null;
+    this.following = false;
     this.markerForm = null;
     // The body lives in a source, not on the marker, so removing the marker
     // does not take it with it — a stale train would sit there until the next
