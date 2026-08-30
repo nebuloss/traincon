@@ -11,4 +11,7 @@ echo "→ vitesse-maximale-nominale-sur-ligne (vitesses)"
 curl -fL --retry 2 -m 300 "$B/vitesse-maximale-nominale-sur-ligne/exports/json" -o "$DIR/vmax.json"
 echo "→ mode-de-cantonnement-des-lignes (espacement des trains)"
 curl -fL --retry 2 -m 300 "$B/mode-de-cantonnement-des-lignes/exports/json" -o "$DIR/cantonnement.json"
+echo "→ signalisation (106 000 signaux, ~100 tuiles — comptez 1 min)"
+node "$(cd "$(dirname "$0")/.." && pwd)/tools/fetch-signals.mjs" || \
+  echo "  signalisation indisponible : l'espacement retombera sur le mode de cantonnement"
 echo "OK : $(du -sh "$DIR" | cut -f1) dans $DIR"

@@ -143,6 +143,22 @@ export interface TrainDTO {
   history: DelaySample[];
   coupledWith: string[];
   reconciled: Reconciliation | null;
+  /**
+   * What the traffic ahead implies for this train — see server/Headway.ts.
+   *
+   * The aspect is deduced from how far ahead the next train is and how long
+   * the blocks are on that line, not read from a signal: neither signal
+   * positions nor their states are published.
+   */
+  traffic: {
+    aspect: 'libre' | 'avertissement' | 'semaphore' | 'inconnu';
+    ahead?: string;
+    gapM?: number;
+    pushedM?: number;
+    allowedKmh?: number;
+    /** Distance to the next signal that could stop it, metres. */
+    signalM?: number;
+  } | null;
   feedTs: number;
 }
 

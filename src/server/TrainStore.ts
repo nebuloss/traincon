@@ -16,12 +16,16 @@ import { RailGraph } from './RailGraph.ts';
 import { sampleProfile } from '../shared/motion.ts';
 import { Train } from './Train.ts';
 import { CouplingDetector, type CouplingResult } from './CouplingDetector.ts';
+import { BlockIndex } from './Blocks.ts';
 import { DailyBoard } from './DailyBoard.ts';
+import { analyseTraffic, bearingDeg, haversineKm, type Traffic } from './Headway.ts';
+import { SignalIndex } from './Signals.ts';
 import { Disruptions } from './Disruptions.ts';
 import type {
   DelaySample,
   Family,
   JourneyGeo,
+  Position,
   StatsDTO,
   SuggestionDTO,
   TrainDTO,
@@ -124,6 +128,10 @@ export class TrainStore {
   private readonly feed: FeedClient;
   private readonly coupling = new CouplingDetector();
   private readonly disruptions = new Disruptions();
+  private blocks: BlockIndex | null = null;
+  private signals: SignalIndex | null = null;
+  /** Train number -> what the traffic ahead of it implies. */
+  private traffic = new Map<string, Traffic>();
   private readonly board: DailyBoard;
 
   private trains: Train[] = [];
@@ -159,6 +167,10 @@ export class TrainStore {
   async start(): Promise<void> {
     this.statics = await GtfsStatic.load(this.dataDir);
     await this.board.load();
+    // Spacing is a refinement: without it every train is placed as if the line
+    // were empty, which is what it did before.
+    this.blocks = await BlockIndex.load(this.dataDir);
+    this.signals = await SignalIndex.load(this.dataDir);
     // Optional and key-gated: without one the board still ranks, it just
     // cannot say why.
     this.disruptions.start();
@@ -239,6 +251,8 @@ export class TrainStore {
     }
 
     this.couples = this.coupling.detect(this.trains, now, this.rail);
+
+    this.traffic = this.analyseSpacing(now);
 
     // Record the day's worst before pruning drops anything. The raw trains,
     // not list(): that builds a DTO per train, routing each one over the rail
@@ -371,6 +385,7 @@ export class TrainStore {
       history: this.history.get(train.number) ?? [],
       coupledWith: this.couples.partners.get(train.number) ?? [],
       reconciled: rec,
+      traffic: this.traffic.get(train.number) ?? null,
       feedTs: view.feedTs,
     };
   }
@@ -494,6 +509,51 @@ export class TrainStore {
    * Full journey as drawable geometry: the track-following polyline for every
    * leg, plus the stops.
    */
+  /**
+   * Which trains are running into the back of which.
+   *
+   * Deliberately built from a cheap straight-line position rather than the
+   * routed one: this runs for every train on every refresh, and computing full
+   * positions here is exactly what exhausted the heap in v2.3.0. Spacing only
+   * needs to know which train is in front and roughly how far, and a
+   * kilometre-scale answer is enough for a block that is kilometres long.
+   */
+  private analyseSpacing(now: number): Map<string, Traffic> {
+    if (!this.blocks) return new Map();
+
+    const followers = [];
+    for (const t of this.trains) {
+      if (!t.line) continue;
+      const leg = t.legAt(now);
+      if (leg.basis !== 'between' || !leg.b) continue;
+
+      const { a, b, f } = leg;
+      const span = Math.max(1, (leg.span ?? 0) / 3600);
+      const km = haversineKm(a.lat, a.lon, b.lat, b.lon);
+
+      followers.push({
+        number: t.number,
+        line: t.line,
+        position: {
+          basis: 'between' as const,
+          lat: a.lat + (b.lat - a.lat) * f,
+          lon: a.lon + (b.lon - a.lon) * f,
+          bearing: bearingDeg(a.lat, a.lon, b.lat, b.lon),
+          progress: (leg.i + f) / Math.max(1, t.calls.length - 1),
+          speedKmh: Math.round(km / span),
+        } as Position,
+      });
+    }
+
+    return analyseTraffic(
+      followers,
+      (lat, lon) => this.blocks!.spacingNear(lat, lon),
+      this.signals
+        ? (lat, lon, bearing) => this.signals!.nextAhead(lat, lon, bearing)?.distanceM ?? null
+        : undefined,
+    );
+  }
+
   /** The day's worst delays, with a cause where the feed gives one. */
   worst(limit = 25): WorstBoardDTO {
     const live = new Set(this.trains.map((t) => t.number));

@@ -59,6 +59,8 @@ export interface Traffic {
   gapM?: number;
   /** Metres this train was pushed back to stay clear of it. */
   pushedM?: number;
+  /** Distance to the next signal that could stop it, when known. */
+  signalM?: number;
   /**
    * Speed the approach allows, km/h — present only when it is a restriction.
    *
@@ -108,12 +110,22 @@ const NEIGHBOUR_KM = 40;
 const EARTH_KM = 6371;
 const RAD = Math.PI / 180;
 
-function haversineKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
+export function haversineKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const dLat = (bLat - aLat) * RAD;
   const dLon = (bLon - aLon) * RAD;
   const s =
     Math.sin(dLat / 2) ** 2 + Math.cos(aLat * RAD) * Math.cos(bLat * RAD) * Math.sin(dLon / 2) ** 2;
   return 2 * EARTH_KM * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+/** Initial bearing from one point to another, degrees clockwise from north. */
+export function bearingDeg(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const dLon = (bLon - aLon) * RAD;
+  const y = Math.sin(dLon) * Math.cos(bLat * RAD);
+  const x =
+    Math.cos(aLat * RAD) * Math.sin(bLat * RAD) -
+    Math.sin(aLat * RAD) * Math.cos(bLat * RAD) * Math.cos(dLon);
+  return (Math.atan2(y, x) / RAD + 360) % 360;
 }
 
 /** Smallest angle between two headings, in degrees. */
@@ -133,6 +145,13 @@ export function headingGap(a: number, b: number): number {
 export function analyseTraffic(
   trains: readonly Follower[],
   spacingM: (lat: number, lon: number) => number,
+  /**
+   * Distance to the next signal that can stop this train, when the signalling
+   * layer is loaded. Real geometry beats the block-length estimate: it is
+   * where the train would actually be brought to a stand rather than an
+   * average for that kind of line.
+   */
+  nextSignalM?: (lat: number, lon: number, bearing: number) => number | null,
 ): Map<string, Traffic> {
   const out = new Map<string, Traffic>();
 
@@ -183,30 +202,32 @@ export function analyseTraffic(
       // within two, the next signal is, so this one warns.
       const aspect: Aspect = blocks < 1 ? 'semaphore' : blocks < 2 ? 'avertissement' : 'libre';
 
-      const traffic: Traffic = {
+      const traffic0: Traffic = {
         aspect,
         ahead: ahead.number,
         gapM: Math.round(gapKm * 1000),
       };
 
-      // The signal it is running towards protects the occupied block, so it
-      // stands one block behind the train ahead. That is what this train must
-      // be able to stop at.
-      const toRedM = (gapKm - blockKm) * 1000;
+      // The signal it is running towards protects the occupied block. Where
+      // the signalling is known, use the real one; otherwise fall back to the
+      // block boundary, which is one block behind the train ahead.
+      const realM = nextSignalM?.(pa.lat, pa.lon, pa.bearing ?? 0) ?? null;
+      const toRedM = realM ?? (gapKm - blockKm) * 1000;
+      if (realM !== null) traffic0.signalM = Math.round(realM);
       const freeKmh = pa.speedKmh || 0;
       if (freeKmh > 0) {
         const allowed = approachSpeed(toRedM, freeKmh);
         // Only report it when it actually bites; otherwise the train is
         // unaffected and saying so would be noise.
-        if (allowed < freeKmh - 1) traffic.allowedKmh = Math.round(allowed);
+        if (allowed < freeKmh - 1) traffic0.allowedKmh = Math.round(allowed);
       }
 
       // Inside a block it cannot be where it is drawn; push it back to the
       // boundary. Only ever backwards — moving it forward would invent
       // progress.
-      if (blocks < 1) traffic.pushedM = Math.round((blockKm - gapKm) * 1000);
+      if (blocks < 1) traffic0.pushedM = Math.round((blockKm - gapKm) * 1000);
 
-      out.set(a.number, traffic);
+      out.set(a.number, traffic0);
     }
   }
 
