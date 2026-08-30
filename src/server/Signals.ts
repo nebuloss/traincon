@@ -127,6 +127,36 @@ export class SignalIndex {
     return best;
   }
 
+  /**
+   * Infrastructure line code at a point, from the nearest signal.
+   *
+   * Trains carry a *commercial* line label — "Paris - Rennes - Saint-Malo
+   * TGV" — and two trains sharing a physical route routinely carry different
+   * ones, so grouping by it finds almost no pairs. The infrastructure code is
+   * the same for both because it describes the track, not the service.
+   */
+  lineAt(lat: number, lon: number, maxKm = 2): string | null {
+    const ci = Math.floor(lat / CELL);
+    const cj = Math.floor(lon / CELL);
+    const rings = Math.ceil(maxKm / (CELL * 111)) + 1;
+
+    let best: string | null = null;
+    let bestKm = Infinity;
+    for (let i = ci - rings; i <= ci + rings; i++) {
+      for (let j = cj - rings; j <= cj + rings; j++) {
+        for (const s of this.cells.get(`${i},${j}`) ?? []) {
+          if (!s.line) continue;
+          const km = haversineKm(lat, lon, s.lat, s.lon);
+          if (km < bestKm && km <= maxKm) {
+            bestKm = km;
+            best = s.line;
+          }
+        }
+      }
+    }
+    return best;
+  }
+
   /** Load from data/geo, or null when the file has not been fetched. */
   static async load(dataDir = 'data'): Promise<SignalIndex | null> {
     const file = path.join(dataDir, 'geo', 'signals.json');

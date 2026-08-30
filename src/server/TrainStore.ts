@@ -519,7 +519,10 @@ export class TrainStore {
    * kilometre-scale answer is enough for a block that is kilometres long.
    */
   private analyseSpacing(now: number): Map<string, Traffic> {
-    if (!this.blocks) return new Map();
+    // Either source will do. The signalling layer is the better one — it gives
+    // the real distance to the signal that would stop the train — and the
+    // block-working mode is the fallback where it has nothing.
+    if (!this.signals && !this.blocks) return new Map();
 
     const followers = [];
     for (const t of this.trains) {
@@ -531,13 +534,22 @@ export class TrainStore {
       const span = Math.max(1, (leg.span ?? 0) / 3600);
       const km = haversineKm(a.lat, a.lon, b.lat, b.lon);
 
+      const lat = a.lat + (b.lat - a.lat) * f;
+      const lon = a.lon + (b.lon - a.lon) * f;
+
+      // Group on the infrastructure line, not the commercial one: two trains
+      // sharing a track routinely carry different service labels, so grouping
+      // by those found almost no pairs at all.
+      const line = this.signals?.lineAt(lat, lon) ?? t.line;
+      if (!line) continue;
+
       followers.push({
         number: t.number,
-        line: t.line,
+        line,
         position: {
           basis: 'between' as const,
-          lat: a.lat + (b.lat - a.lat) * f,
-          lon: a.lon + (b.lon - a.lon) * f,
+          lat,
+          lon,
           bearing: bearingDeg(a.lat, a.lon, b.lat, b.lon),
           progress: (leg.i + f) / Math.max(1, t.calls.length - 1),
           speedKmh: Math.round(km / span),
@@ -547,7 +559,9 @@ export class TrainStore {
 
     return analyseTraffic(
       followers,
-      (lat, lon) => this.blocks!.spacingNear(lat, lon),
+      // 1 800 m is a typical lit block, and stands in where the mode table is
+      // not available.
+      (lat, lon) => this.blocks?.spacingNear(lat, lon) ?? 1800,
       this.signals
         ? (lat, lon, bearing) => this.signals!.nextAhead(lat, lon, bearing)?.distanceM ?? null
         : undefined,
