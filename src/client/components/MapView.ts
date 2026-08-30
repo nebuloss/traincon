@@ -8,6 +8,8 @@
  */
 
 import { Format } from '../core/Format.ts';
+import { tr } from '../core/I18n.ts';
+import { Track } from '../core/Track.ts';
 import { Theme } from '../core/Theme.ts';
 import type { Api } from '../core/Api.ts';
 import type { JourneyGeo, JourneyLine, TrainDTO } from '../../shared/types.ts';
@@ -51,6 +53,19 @@ export class MapView {
   private pathFor: string | null = null;
   private geo: JourneyGeo | null = null;
   private lastAutoZoom: number | null = null;
+
+  /**
+   * Dead reckoning between server updates.
+   *
+   * Positions are recomputed once a minute and polled every thirty seconds, so
+   * a train watched on the map sat still and then jumped. `track` measures the
+   * route already drawn; `moving` records where the train was and how fast,
+   * and the animation advances it from there until the next real position
+   * replaces the estimate.
+   */
+  private track: Track | null = null;
+  private moving: { distKm: number; kmh: number; since: number } | null = null;
+  private raf: number | null = null;
 
   constructor(
     private readonly api: Api,
@@ -206,6 +221,10 @@ export class MapView {
         });
       }
       this.pathFor = t.number;
+      const line = this.geo.features.find((f) => f.geometry.type === 'LineString');
+      this.track = line
+        ? new Track((line.geometry as { coordinates: number[][] }).coordinates)
+        : null;
       this.frame(t, mode, true);
     } else if (reframe) {
       this.frame(t, mode, false);
@@ -220,6 +239,81 @@ export class MapView {
     }
 
     this.drawMarker(t);
+    this.startDeadReckoning(t);
+  }
+
+  /**
+   * Begin advancing the marker from the position just received.
+   *
+   * Stopped, off-track or reduced-motion: nothing to animate, and the marker
+   * stays exactly where the server put it.
+   */
+  private startDeadReckoning(t: TrainDTO): void {
+    this.stopAnimation();
+
+    const p = t.position;
+    const kmh = p.speedKmh ?? 0;
+    const reduced =
+      typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!this.track || !kmh || p.geometry !== 'rail' || reduced) {
+      this.showSpeed(kmh);
+      return;
+    }
+
+    this.moving = { distKm: this.track.distanceAt(p.lat, p.lon), kmh, since: performance.now() };
+    this.showSpeed(kmh);
+
+    // Twelve updates a second. A train at 300 km/h covers 7 m between them,
+    // which is well under a pixel at the zooms this view uses, so the extra
+    // frames a 60 Hz loop would draw are repaints nobody can see.
+    const MIN_GAP_MS = 80;
+    let lastDrawn = 0;
+
+    const step = (): void => {
+      const m = this.moving;
+      if (!m || !this.track || !this.marker) return;
+
+      // Stop when the map is not on screen. The modal keeps its panels in the
+      // DOM when you switch tab, so without this the loop would run on for as
+      // long as the modal stayed open.
+      if (!document.getElementById('mpanel-carte')?.classList.contains('active')) {
+        this.stopAnimation();
+        return;
+      }
+
+      const now = performance.now();
+      if (now - lastDrawn >= MIN_GAP_MS) {
+        lastDrawn = now;
+        // Recomputed from elapsed time rather than accumulated per frame, so a
+        // backgrounded tab — where the browser stops calling rAF — simply
+        // catches up on return instead of falling behind.
+        const here = this.track.at(m.distKm + m.kmh * ((now - m.since) / 3_600_000));
+        if (here) {
+          this.marker.setLngLat([here.lon, here.lat]);
+          const dir = this.marker.getElement().querySelector<HTMLElement>('.tm-dir');
+          if (dir) {
+            dir.style.transform = `rotate(${here.bearing}deg) translateY(calc(-1 * var(--tm-orbit)))`;
+          }
+        }
+      }
+      this.raf = requestAnimationFrame(step);
+    };
+    this.raf = requestAnimationFrame(step);
+  }
+
+  private stopAnimation(): void {
+    if (this.raf !== null) cancelAnimationFrame(this.raf);
+    this.raf = null;
+    this.moving = null;
+  }
+
+  /** Current speed, on the map itself. */
+  private showSpeed(kmh: number): void {
+    const el = document.getElementById('mapSpeed');
+    if (!el) return;
+    el.textContent = kmh ? tr('map.speed', { kmh: String(Math.round(kmh)) }) : tr('map.stopped');
+    el.classList.toggle('is-stopped', !kmh);
   }
 
   private drawMarker(t: TrainDTO): void {
@@ -273,8 +367,10 @@ export class MapView {
 
 
   dispose(): void {
+    this.stopAnimation();
     this.marker?.remove();
     this.marker = null;
     this.pathFor = null;
+    this.track = null;
   }
 }

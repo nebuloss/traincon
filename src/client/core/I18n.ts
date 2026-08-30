@@ -144,6 +144,8 @@ const FR: Dict = {
 
   'map.onTrain': '🚆 Sur le train',
   'map.wholeRoute': '🧭 Tout le trajet',
+  'map.speed': '{kmh} km/h',
+  'map.stopped': 'à l’arrêt',
   'map.follow': 'Suivre',
   'map.framing': 'Cadrage',
   'map.trainLabel': 'Train suivi',
@@ -360,6 +362,8 @@ const EN: Dict = {
 
   'map.onTrain': '🚆 On the train',
   'map.wholeRoute': '🧭 Whole route',
+  'map.speed': '{kmh} km/h',
+  'map.stopped': 'stopped',
   'map.follow': 'Follow',
   'map.framing': 'Framing',
   'map.trainLabel': 'Tracked train',

@@ -785,6 +785,13 @@ i.sw.verylate { background: var(--verylate); } i.sw.cancelled { background: var(
   .train-marker { width: 36px; height: 36px; --tm-orbit: 22px; }
   .train-marker .tm-body { font-size: 20px; border-width: 3px; }
 }
+/* Live speed, on the map itself. Tabular so it does not jitter as it ticks. */
+.map-speed {
+  margin-left: auto; font-size: 12.5px; font-weight: 600;
+  color: var(--fg); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.map-speed.is-stopped { color: var(--muted); font-weight: 500; }
+
 .maplibregl-popup-content {
   background: var(--panel); color: var(--fg); border-radius: 10px;
   font-size: 13px; padding: 10px 12px; box-shadow: var(--shadow);
