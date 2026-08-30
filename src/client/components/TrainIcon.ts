@@ -112,14 +112,24 @@ const GLYPH: Readonly<Record<Family, string>> = {
  * Above this zoom the train is drawn to scale rather than as a disc.
  *
  * Set by what the artwork needs to read: at true length a 26 m coach is
- * about 16 px here and grows quickly, and below it there is nothing to see
- * but a smear.
+ * about 16 px here and doubles every zoom after, and below it there is
+ * nothing to see but a smear.
  */
-export const PLAN_ZOOM = 16;
+export const PLAN_ZOOM = 15;
 
-/** Metres per pixel at a given zoom and latitude. */
+/**
+ * Metres per pixel at a given zoom and latitude, in MapLibre's terms.
+ *
+ * The constant is the one people quote least often. The familiar 156543 is
+ * for 256-pixel tiles; MapLibre uses 512, so its world is 512·2^zoom pixels
+ * across and a pixel covers half as much ground at the same zoom number
+ * (`tileSize = 512`, `worldSize = tileSize * scale` in its Transform).
+ *
+ * Getting this wrong by the factor of two drew every vehicle at half its
+ * length, which showed up as a gap between each one and the next.
+ */
 export function metresPerPixel(zoom: number, lat: number): number {
-  return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
+  return (78271.51696 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
 }
 
 /** How long this train is, allowing for a coupled set. */

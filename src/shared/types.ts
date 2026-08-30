@@ -334,7 +334,10 @@ export type VehicleRole = 'power' | 'artic' | 'loco' | 'coach' | 'emu-cab' | 'em
  * use — see client/core/TrainBody and the artwork in client/assets/train.
  */
 export type TrainCarsGeo = FeatureCollection<
-  Feature<PointGeom, { icon: string; role: VehicleRole; bearing: number; lead: 0 | 1 }>
+  Feature<
+    PointGeom,
+    { icon: string; role: VehicleRole; bearing: number; lead: 0 | 1; reversed: 0 | 1 }
+  >
 >;
 
 /** One line of the day's worst-delays board. */

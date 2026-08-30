@@ -31,20 +31,31 @@ test('a coupled set is twice the train', () => {
   assert.equal(trainLengthM(train('ter', ['1234'])), 160);
 });
 
-test('the scale is the map scale', () => {
-  // At the equator, zoom 0 is about 156 km to the pixel; each zoom halves it.
-  assert.ok(Math.abs(metresPerPixel(0, 0) - 156543) < 1);
-  assert.ok(Math.abs(metresPerPixel(1, 0) - metresPerPixel(0, 0) / 2) < 1);
+test('the scale is the map library scale, not the tile-scheme one', () => {
+  // MapLibre draws with 512-pixel tiles, so its world is 512·2^zoom across
+  // and zoom 0 is about 78 km to the pixel — half the 156 543 that gets
+  // quoted for the 256-pixel scheme. Using the familiar number here drew
+  // every vehicle at half its length, which showed as a gap between each.
+  assert.ok(Math.abs(metresPerPixel(0, 0) - 78271.5) < 1, `${metresPerPixel(0, 0)}`);
+  assert.ok(Math.abs(metresPerPixel(1, 0) - metresPerPixel(0, 0) / 2) < 1, 'halves per zoom');
   // And it narrows with latitude.
   assert.ok(metresPerPixel(15, 45) < metresPerPixel(15, 0));
 });
 
-test('a TGV at close zoom is drawn a couple of hundred pixels long', () => {
-  // Zoom 17 at Bordeaux is under a metre to the pixel, so 200 m of train is a
-  // substantial object rather than a dot.
-  const mpp = metresPerPixel(17, 44.8);
-  const px = trainLengthM(train('tgv')) / mpp;
-  assert.ok(px > 150 && px < 400, `${px.toFixed(0)} px`);
+test('a coach is drawn about the length it really is', () => {
+  // The check the factor-of-two bug would have failed: at zoom 17 over France
+  // a 26.4 m Corail coach should be a few tens of pixels long, not ten.
+  const px = 26.4 / metresPerPixel(17, 47);
+  assert.ok(px > 45 && px < 90, `${px.toFixed(0)} px`);
+});
+
+test('a TGV at close zoom fills the screen, as it should', () => {
+  // Zoom 17 at Bordeaux is 0.42 m to the pixel, so a 200 m set is about 470
+  // px — wider than most phones. That is what being zoomed in on a train at
+  // street level looks like, and it is the number the old 256-tile constant
+  // halved.
+  const px = trainLengthM(train('tgv')) / metresPerPixel(17, 44.8);
+  assert.ok(px > 400 && px < 550, `${px.toFixed(0)} px`);
 });
 
 test('each family has its own glyph at low zoom', () => {

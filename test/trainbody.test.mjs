@@ -56,6 +56,8 @@ function curve(radiusKm) {
 const xy = ([lon, lat]) => [(lon - LON0) * KM_PER_DEG * 1000 * COS, (lat - LAT0) * KM_PER_DEG * 1000];
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const at = (f) => xy(f.geometry.coordinates);
+/** Which way the vehicle is going, with the rear cab's half-turn taken back out. */
+const heading = (f) => f.properties.bearing - (f.properties.reversed ? 180 : 0);
 
 // ------------------------------------------------------------- the consist ---
 
@@ -145,9 +147,7 @@ test('on a curve the vehicles turn with the track', () => {
   // This is the whole reason the train is placed vehicle by vehicle.
   const track = curve(0.6);
   const cars = trainCars(track, Math.min(track.length, 1.0), 200, 'ter', 'ter').features;
-  const swept = Math.abs(
-    cars[cars.length - 1].properties.bearing - cars[0].properties.bearing,
-  );
+  const swept = Math.abs(heading(cars[cars.length - 1]) - heading(cars[0]));
   // 200 m of train on a 600 m radius sweeps about 19°.
   assert.ok(swept > 10 && swept < 30, `swept ${swept.toFixed(1)}°`);
 });
@@ -165,9 +165,10 @@ test('no vehicle strays from the rails on a curve', () => {
 });
 
 test('the artwork is drawn nose-right, so the bearing is offset a quarter turn', () => {
-  // Due north track: the drawing has to be turned to point up the page.
+  // Due north track: the drawing has to be turned to point up the page. The
+  // rear cab carries a further half turn, which is taken back out here.
   for (const f of trainCars(straight(10), 5, 200, 'tgv', 'inoui').features) {
-    assert.ok(Math.abs(f.properties.bearing + 90) < 1, 'north is -90 to the art');
+    assert.ok(Math.abs(heading(f) + 90) < 1, 'north is -90 to the art');
   }
 });
 
@@ -244,4 +245,40 @@ test('the cab drawings face the way the code expects', async () => {
     assert.ok(glass, `${name}: no windscreen found`);
     assert.ok(Number(glass[1]) > width / 2, `${name}: the cab should be at the right-hand end`);
   }
+});
+
+test('the vehicle at the back faces backwards', () => {
+  // A TGV has a motrice at each end and the rear one is turned round. Without
+  // this the back of the train is a nose buried in the coach behind it.
+  const cars = trainCars(straight(10), 5, 200, 'tgv', 'inoui').features;
+  const rear = cars[cars.length - 1];
+  const front = cars[0];
+  assert.equal(rear.properties.role, 'power');
+  assert.equal(front.properties.role, 'power');
+  assert.equal(rear.properties.reversed, 1, 'the rear motrice is turned round');
+  assert.equal(front.properties.reversed, 0);
+  // Half a turn apart, however the angles are wrapped.
+  const gap = Math.abs(((rear.properties.bearing - front.properties.bearing) % 360 + 360) % 360);
+  assert.ok(Math.abs(gap - 180) < 1, `${gap.toFixed(1)}° apart`);
+});
+
+test('a multiple unit is turned round at the back too', () => {
+  const cars = trainCars(straight(10), 5, 80, 'ter', 'ter').features;
+  const rear = cars[cars.length - 1];
+  assert.equal(rear.properties.role, 'emu-cab');
+  assert.equal(rear.properties.reversed, 1);
+});
+
+test('a hauled train is not turned round: its back is a coach', () => {
+  // An Intercités has one cab, at the front. Reversing the rear vehicle would
+  // put a coach's gangway end where its other gangway end already is.
+  const cars = trainCars(straight(10), 5, 190, 'ic', 'ic').features;
+  assert.ok(cars.every((f) => f.properties.reversed === 0));
+  assert.equal(cars[cars.length - 1].properties.role, 'coach', 'a coach at the back');
+  assert.equal(cars[0].properties.role, 'loco', 'the loco leads');
+});
+
+test('only the rearmost vehicle is ever turned round', () => {
+  const cars = trainCars(straight(10), 5, 400, 'tgv', 'inoui').features;
+  assert.equal(cars.filter((f) => f.properties.reversed === 1).length, 1);
 });

@@ -102,14 +102,22 @@ export function trainCars(
     const b = track.at(front);
     if (!a || !b) break;
 
+    // The vehicle at the back faces backwards, if it has a front at all. A
+    // TGV has a motrice at each end and a multiple unit a cab at each end,
+    // and the rear one is turned round — which is what you see on the ground,
+    // and what makes a train look like a train rather than like a row of
+    // vehicles all chasing the one in front.
+    const reversed = i === 0 && (role === 'power' || role === 'emu-cab') && roles.length > 1;
+
     features.push({
       type: 'Feature',
       properties: {
         icon: `${role}|${livery}`,
         role,
         // The artwork is drawn nose-right, so east is its zero.
-        bearing: Track.bearing(a.lat, a.lon, b.lat, b.lon) - 90,
+        bearing: Track.bearing(a.lat, a.lon, b.lat, b.lon) - 90 + (reversed ? 180 : 0),
         lead: i === roles.length - 1 ? 1 : 0,
+        reversed: reversed ? 1 : 0,
       },
       geometry: { type: 'Point', coordinates: [(a.lon + b.lon) / 2, (a.lat + b.lat) / 2] },
     });

@@ -90,7 +90,14 @@ export function tint(svg: string, band: string, body: string): string {
 async function rasterise(svg: string, w: number, h: number): Promise<ImageData | null> {
   // Firefox will not rasterise an SVG that carries only a viewBox, so the
   // intrinsic size is written in before it becomes an image.
-  const sized = svg.replace('<svg ', `<svg width="${w}" height="${h}" `);
+  // preserveAspectRatio="none" is the point of this, not an afterthought: the
+  // target is deliberately not the viewBox's shape — see FATTEN — and the
+  // default would letterbox the drawing inside it instead of stretching it,
+  // leaving the vehicle at true width with transparent bands above and below.
+  const sized = svg.replace(
+    '<svg ',
+    `<svg width="${w}" height="${h}" preserveAspectRatio="none" `,
+  );
   const img = new Image(w, h);
   img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sized)}`;
   try {

@@ -113,6 +113,49 @@ test('track is drawn as track, not as a line', () => {
   assert.match(src, /for \(const side of \[-1, 1\]/, 'one rail each side');
 });
 
+/**
+ * The output values of a zoom interpolation, e.g. the widths out of
+ * `['interpolate', ['linear'], ['zoom'], 15.5, 3, 19, 13]` — the stops
+ * alternate zoom, value, and it is the values that are wanted.
+ */
+function stops(block, prop) {
+  const line = new RegExp(`'${prop}':[^\\n]*`).exec(block);
+  if (!line) return [];
+  const after = line[0].slice(line[0].indexOf("['zoom']") + 8);
+  const nums = [...after.matchAll(/(-?[\d.]+)/g)].map((m) => Number(m[1]));
+  return nums.filter((_, i) => i % 2 === 1);
+}
+
+const tieBlock = src.slice(src.indexOf("id: 'osm-track-ties'"), src.indexOf('for (const side of'));
+const railBlock = src.slice(src.indexOf('for (const side of'));
+
+test('the sleepers are drawn wider than the rails that sit on them', () => {
+  // A sleeper is 2.6 m of timber under a 1.435 m gauge: its ends stand proud
+  // of the rails, and that overhang is what makes it read as a sleeper rather
+  // than as a smudge on the ballast.
+  const ties = Math.max(...stops(tieBlock, 'line-width'));
+  const rails = Math.max(...stops(railBlock, 'line-width'));
+  assert.ok(ties > 0 && rails > 0, `parsed ties ${ties}, rails ${rails}`);
+  assert.ok(ties > rails * 3, `ties ${ties} against rails ${rails}`);
+});
+
+test('the sleepers are chunky enough to see', () => {
+  // Drawn at true size they are 26 cm of timber every 60 cm, which is under a
+  // pixel even at z19. Fewer are drawn, each given room to read.
+  const dash = /'line-dasharray': \[([\d.]+), ([\d.]+)\]/.exec(tieBlock);
+  assert.ok(dash, 'the ties are a dashed line');
+  assert.ok(Number(dash[1]) >= 0.4, `a dash of ${dash[1]} line-widths is a hairline`);
+});
+
+test('the rails sit inside the sleeper, not off the end of it', () => {
+  // The offset is half the gauge; past half the sleeper width the rails would
+  // float beside the track instead of resting on it.
+  const offsets = [...railBlock.matchAll(/([\d.]+) \* side/g)].map((m) => Number(m[1]));
+  assert.ok(offsets.length > 0, 'the rails are offset either side of the centreline');
+  const halfSleeper = Math.max(...stops(tieBlock, 'line-width')) / 2;
+  assert.ok(Math.max(...offsets) < halfSleeper, `offset ${Math.max(...offsets)} against ${halfSleeper}`);
+});
+
 test('every source-layer asked for is one the tiles carry', () => {
   // A wrong name is not an error anywhere: MapLibre renders an empty layer and
   // says nothing. 'platform_edges' was asked for for a while and never existed.

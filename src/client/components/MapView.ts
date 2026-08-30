@@ -220,7 +220,7 @@ export class MapView {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': Theme.token('tie'),
-          'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1, 16, 3.5, 19, 9],
+          'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1, 16, 3, 19, 10],
           // Faded in over a zoom level so it does not appear abruptly. The
           // ramp used to end where the layer began, so the tracks were fully
           // transparent at every zoom they were drawn at.
@@ -236,12 +236,18 @@ export class MapView {
         type: 'line',
         source: 'osmrail',
         'source-layer': 'tracks',
-        minzoom: 16.5,
+        minzoom: 15.5,
         paint: {
           'line-color': Theme.token('tie-dark'),
-          'line-width': ['interpolate', ['linear'], ['zoom'], 16.5, 3.5, 19, 9],
-          'line-dasharray': [0.3, 0.45],
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 16.5, 0, 17.5, 0.75],
+          // Wider than the ballast it sits on, because a sleeper is: 2.6 m of
+          // timber under a 1.435 m gauge, ends proud of the rails.
+          'line-width': ['interpolate', ['linear'], ['zoom'], 15.5, 3, 19, 13],
+          // Fewer sleepers than there really are, and each one far chunkier.
+          // At true size they are 26 cm of timber every 60 cm, which even at
+          // z19 is well under a pixel — drawn honestly they are invisible, so
+          // roughly every fourth one is drawn and given the room to read.
+          'line-dasharray': [0.5, 0.5],
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 15.5, 0, 16.5, 0.95],
         },
       });
 
@@ -256,8 +262,10 @@ export class MapView {
           minzoom: 16,
           paint: {
             'line-color': Theme.token('steel'),
-            'line-width': ['interpolate', ['linear'], ['zoom'], 16, 0.7, 19, 1.8],
-            'line-offset': ['interpolate', ['linear'], ['zoom'], 16, 1 * side, 19, 2.6 * side],
+            'line-width': ['interpolate', ['linear'], ['zoom'], 16, 0.8, 19, 2.2],
+            // Half the 1.435 m gauge, in pixels, so the rails sit where they
+            // really do — well inside the ends of the sleepers.
+            'line-offset': ['interpolate', ['linear'], ['zoom'], 16, 0.9 * side, 19, 3.4 * side],
             'line-opacity': ['interpolate', ['linear'], ['zoom'], 16, 0, 17, 0.95],
           },
         });
