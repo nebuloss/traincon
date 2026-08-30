@@ -365,3 +365,35 @@ test('coupled halves are excluded on single track too', () => {
   assert.equal(t.get('12177').opposing, undefined);
   assert.equal(t.get('12177').pushedM, undefined);
 });
+
+
+test('two trains at the same point are one train, not a conflict', () => {
+  // Seen live three times: 5500 to Metz and 12184 to Strasbourg leave
+  // Montpellier at the same second, joined, splitting later. The coupling
+  // detector misses them because it buckets on a shared terminus and these
+  // share an origin — so the rule here is the one that holds regardless: no
+  // signalling puts two trains in the same place.
+  const t = analyseTraffic(
+    [running('5500', 'L1', 0, 0.4), running('12184', 'L1', 0, 0.45)],
+    twoKm,
+  );
+  assert.equal(t.get('5500').pushedM, undefined);
+  assert.equal(t.get('5500').ahead, undefined);
+});
+
+test('a train just over the threshold is still a real follower', () => {
+  // 200 m apart: close, but a genuine following move rather than an artefact.
+  const t = analyseTraffic(
+    [running('8540', 'L1', 0, 0.4), running('8542', 'L1', 0.2, 0.5)],
+    twoKm,
+  );
+  assert.equal(t.get('8540').ahead, '8542');
+  assert.ok(t.get('8540').pushedM > 0);
+});
+
+test('the same rule applies to opposing trains on single track', () => {
+  const a = running('5500', 'L1', 0, 0.4);
+  const b = running('12184', 'L1', 0, 0.45, 180);
+  const t = analyseTraffic([a, b], twoKm, undefined, () => ({ single: true, tracks: 1 }));
+  assert.equal(t.get('5500').opposing, undefined, 'not a head-on with itself');
+});

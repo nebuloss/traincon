@@ -119,6 +119,18 @@ export function approachSpeed(distanceM: number, freeKmh: number, targetKmh = 0)
   return Math.min(freeKmh, allowed);
 }
 
+/**
+ * Below this two "trains" are one train, whatever the feed says.
+ *
+ * No signalling system puts two trains at the same point, so a gap of nothing
+ * is a data artefact rather than a following move. It happens for coupled sets
+ * — and for portions that run joined and split later, which the coupling
+ * detector misses because it buckets on a shared terminus and those share an
+ * origin instead: 5500 to Metz and 12184 to Strasbourg leave Montpellier at
+ * the same second, joined, and were being drawn as one running into the other.
+ */
+const SAME_TRAIN_M = 150;
+
 /** Degrees of heading within which two trains count as going the same way. */
 const SAME_WAY_DEG = 60;
 /** Beyond this the trains are simply elsewhere on a long line. */
@@ -210,7 +222,7 @@ export function analyseTraffic(
           if (headingGap(pa.bearing ?? 0, pb.bearing ?? 0) < 180 - SAME_WAY_DEG) continue;
 
           const gapKm = haversineKm(pa.lat, pa.lon, pb.lat, pb.lon);
-          if (gapKm > NEIGHBOUR_KM) continue;
+          if (gapKm > NEIGHBOUR_KM || gapKm * 1000 < SAME_TRAIN_M) continue;
           if (!facing || gapKm < facing.gapKm) facing = { train: b, gapKm };
         }
 
@@ -245,7 +257,7 @@ export function analyseTraffic(
         if ((pb.progress ?? 0) <= (pa.progress ?? 0)) continue;
 
         const gapKm = haversineKm(pa.lat, pa.lon, pb.lat, pb.lon);
-        if (gapKm > NEIGHBOUR_KM) continue;
+        if (gapKm > NEIGHBOUR_KM || gapKm * 1000 < SAME_TRAIN_M) continue;
         if (!nearest || gapKm < nearest.gapKm) nearest = { train: b, gapKm };
       }
 
