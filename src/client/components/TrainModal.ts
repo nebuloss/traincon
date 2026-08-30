@@ -135,9 +135,9 @@ export class TrainModal {
       const follow = (document.getElementById('followLock') as HTMLInputElement | null)?.checked ?? true;
       await this.map.show(t, this.mapMode(), follow, this.mapReframe);
       this.mapReframe = false;
-      const h = MapView.header(t);
-      document.getElementById('mapTitle')!.innerHTML = h.title;
-      document.getElementById('mapSub')!.innerHTML = h.sub;
+      // No header here: #mapTitle and #mapSub were removed from the panel when
+      // the map became a tab, and the identity is already on the modal head
+      // above the tabs. Writing to them threw on every map render.
     }
   }
 

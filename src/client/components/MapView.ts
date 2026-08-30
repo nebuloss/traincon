@@ -8,7 +8,6 @@
  */
 
 import { Format } from '../core/Format.ts';
-import { tr } from '../core/I18n.ts';
 import { Theme } from '../core/Theme.ts';
 import type { Api } from '../core/Api.ts';
 import type { JourneyGeo, JourneyLine, TrainDTO } from '../../shared/types.ts';
@@ -229,19 +228,21 @@ export class MapView {
     const tier = Format.delayTier(t.delay, t.cancelled);
 
     if (!this.marker) {
+      // The same marker as the journey graph — a ringed disc holding the train
+      // — so the train reads as one thing across both views.
+      //
+      // The disc stays upright while a separate pointer carries the bearing.
+      // Rotating the whole marker, as the old arrow did, would tilt the glyph
+      // and make it unreadable on any heading but north.
       const el = document.createElement('div');
       el.className = 'train-marker';
-      el.innerHTML =
-        '<svg viewBox="0 0 16 16" width="20" height="20">' +
-        '<path d="M8 1 L13 14 L8 11 L3 14 Z" fill="currentColor" ' +
-        'stroke="rgba(0,0,0,.55)" stroke-width="1" stroke-linejoin="round"/></svg>';
-      this.marker = new maplibregl.Marker({ element: el, rotationAlignment: 'map' })
+      el.innerHTML = '<i class="tm-dir"></i><span class="tm-body">🚆</span>';
+      this.marker = new maplibregl.Marker({ element: el, rotationAlignment: 'viewport' })
         .setLngLat([p.lon, p.lat])
         .addTo(this.map);
     } else {
       this.marker.setLngLat([p.lon, p.lat]);
     }
-    this.marker.setRotation(p.bearing ?? 0);
 
     const el = this.marker.getElement();
     el.classList.toggle('is-stopped', !p.speedKmh);
@@ -250,33 +251,17 @@ export class MapView {
     el.style.color = Theme.token(
       tier === 'cancelled' ? 'dead' : tier === 'verylate' ? 'verylate' : tier === 'late' ? 'late' : 'ok',
     );
+
+    // Only the pointer turns. A stopped train has no meaningful heading, so it
+    // is hidden rather than left pointing at wherever it last went.
+    const dir = el.querySelector<HTMLElement>('.tm-dir');
+    if (dir) {
+      const bearing = p.bearing ?? null;
+      dir.style.opacity = bearing === null || !p.speedKmh ? '0' : '1';
+      if (bearing !== null) dir.style.transform = `rotate(${bearing}deg)`;
+    }
   }
 
-  /** Header above the map. */
-  static header(t: TrainDTO): { title: string; sub: string } {
-    const group = [t.number, ...t.coupledWith];
-    const tier = Format.delayTier(t.delay, t.cancelled);
-    return {
-      title: `
-        <span class="badge ${t.family}">${Format.esc(t.serviceLabel)}</span>
-        <strong>${Format.esc(group.join(' + '))}</strong>
-        ${group.length > 1 ? '<span class="um-tag">UM</span>' : ''}
-        <span class="${tier}">${
-          t.cancelled ? Format.esc(tr('delay.cancelled')).toUpperCase() : Format.delay(t.delay)
-        }</span>`,
-      sub: `
-        <div class="fi-sub">${Format.esc(t.origin)} → ${Format.esc(t.destination)}</div>
-        <div class="fi-sub">${Format.position(t.position)}${
-          t.position.speedKmh ? ` · ~${t.position.speedKmh} km/h` : ''
-        }</div>
-        ${
-          t.next
-            ? `<div class="fi-sub">${Format.esc(tr('card.nextStop', { stop: t.next.name }))} —
-                 ${Format.hhmm(t.next.time)} (${Format.delay(t.next.delay)})</div>`
-            : ''
-        }`,
-    };
-  }
 
   dispose(): void {
     this.marker?.remove();
