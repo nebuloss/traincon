@@ -144,14 +144,14 @@ button { touch-action: manipulation; }
      resolves to zero on iOS Safari, which is why this rendered as nothing on
      a phone while being fine on a desktop. The ratio is the artwork's own:
      a signal is a tall thing on a mast. */
-  width: 20px; height: 52px;
-  aspect-ratio: 44 / 116;
+  width: 24px; height: 47px;
+  aspect-ratio: 44 / 86;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .4));
 }
 .sig-wrap { flex: 0 0 auto; display: inline-flex; align-items: center; }
 /* In the map foot it stands beside the speed roundel, so it matches its height. */
 .map-aspect { flex: 0 0 auto; display: inline-flex; align-items: center; }
-.map-aspect .sig { width: 13.5px; height: 36px; }
+.map-aspect .sig { width: 18px; height: 35px; }
 
 .ov-signal {
   display: flex; align-items: flex-start; gap: 10px;

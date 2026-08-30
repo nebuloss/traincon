@@ -1,16 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 116" class="sig" aria-hidden="true" focusable="false">
-  <!-- Carre: two reds, positions 1 and 4, and the oeilleton out. An absolute stop - this one may not be passed at all. -->
-  <rect x="12" y="111" width="20" height="5" rx="1.5" fill="#4a525e"/>
-  <rect x="18.5" y="100" width="7" height="12" fill="#6b7480"/>
-  <circle cx="35" cy="104" r="3.5" fill="#333333"/>
-  <rect x="5" y="16" width="34" height="84" rx="9" fill="#0c0c0e" stroke="#eef1f5" stroke-width="2.2"/>
-  <circle cx="22" cy="26" r="8" fill="#ff1a1a" opacity=".26"/>
-  <circle cx="22" cy="26" r="5" fill="#ff1a1a"/>
-  <circle cx="20.4" cy="24.4" r="1.5" fill="#fff" opacity=".55"/>
-  <circle cx="22" cy="42" r="5" fill="#333333"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 86" class="sig" aria-hidden="true" focusable="false">
+  <!-- Carre: red, and the oeilleton out. An absolute stop - this one may not be passed at all, and the dark white light is what says so. -->
+  <rect x="12" y="79" width="20" height="5" rx="1.5" fill="#4a525e"/>
+  <rect x="18.5" y="68" width="7" height="12" fill="#6b7480"/>
+  <circle cx="35" cy="72" r="3.5" fill="#333333"/>
+  <rect x="5" y="16" width="34" height="52" rx="9" fill="#0c0c0e" stroke="#eef1f5" stroke-width="2.2"/>
+  <circle cx="22" cy="26" r="5" fill="#333333"/>
+  <circle cx="22" cy="42" r="8" fill="#ff1a1a" opacity=".26"/>
+  <circle cx="22" cy="42" r="5" fill="#ff1a1a"/>
+  <circle cx="20.4" cy="40.4" r="1.5" fill="#fff" opacity=".55"/>
   <circle cx="22" cy="58" r="5" fill="#333333"/>
-  <circle cx="22" cy="74" r="8" fill="#ff1a1a" opacity=".26"/>
-  <circle cx="22" cy="74" r="5" fill="#ff1a1a"/>
-  <circle cx="20.4" cy="72.4" r="1.5" fill="#fff" opacity=".55"/>
-  <circle cx="22" cy="90" r="5" fill="#333333"/>
 </svg>

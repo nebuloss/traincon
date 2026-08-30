@@ -1,11 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 116" class="sig" aria-hidden="true" focusable="false">
-  <!-- Avertissement: yellow, position 5. -->
-  <rect x="12" y="111" width="20" height="5" rx="1.5" fill="#4a525e"/>
-  <rect x="18.5" y="100" width="7" height="12" fill="#6b7480"/>
-  <rect x="5" y="48" width="34" height="52" rx="9" fill="#0c0c0e" stroke="#eef1f5" stroke-width="2.2"/>
-  <circle cx="22" cy="58" r="5" fill="#333333"/>
-  <circle cx="22" cy="74" r="5" fill="#333333"/>
-  <circle cx="22" cy="90" r="8" fill="#ffd400" opacity=".26"/>
-  <circle cx="22" cy="90" r="5" fill="#ffd400"/>
-  <circle cx="20.4" cy="88.4" r="1.5" fill="#fff" opacity=".55"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 86" class="sig" aria-hidden="true" focusable="false">
+  <!-- Avertissement: yellow. Be ready to stop at the next signal. -->
+  <rect x="12" y="79" width="20" height="5" rx="1.5" fill="#4a525e"/>
+  <rect x="18.5" y="68" width="7" height="12" fill="#6b7480"/>
+  <rect x="5" y="16" width="34" height="52" rx="9" fill="#0c0c0e" stroke="#eef1f5" stroke-width="2.2"/>
+  <circle cx="22" cy="26" r="5" fill="#333333"/>
+  <circle cx="22" cy="42" r="5" fill="#333333"/>
+  <circle cx="22" cy="58" r="8" fill="#ffd400" opacity=".26"/>
+  <circle cx="22" cy="58" r="5" fill="#ffd400"/>
+  <circle cx="20.4" cy="56.4" r="1.5" fill="#fff" opacity=".55"/>
 </svg>

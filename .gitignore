@@ -1,5 +1,16 @@
 node_modules/
-data/
+# Downloaded at install time, not committed — except the signal positions,
+# which are published here rather than scraped from someone else's tile server
+# on every install. See data/geo/README.md.
+#
+# A bare `data/` would stop git descending at all, and no `!` exception below
+# it could then take effect; the directory has to be opened up a level at a
+# time.
+data/*
+!data/geo/
+data/geo/*
+!data/geo/signals.json.gz
+!data/geo/README.md
 dist/
 dist-server/
 .env

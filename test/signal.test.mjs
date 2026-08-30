@@ -5,12 +5,16 @@
 // absolute stop you may not pass at all. Both are red. Drawn as one coloured
 // dot they are the same picture.
 //
-// The layout came from the RFN signalling drawings (see the README beside the
-// artwork), and two things in it were not what anyone would guess: the
-// carré's two reds are not adjacent, and the lamps are spaced more than one
-// and a half times their own diameter apart. The version before it had them
-// spaced 1.1 apart, so consecutive lenses overlapped and the positions ran
-// together, and it lit two adjacent lamps for the carré. Hence these.
+// The head is the SNCF three-lamp target: green on top, red in the middle,
+// yellow at the bottom — not the road traffic-light stack. A carré-capable target carries
+// five and lights two non-adjacent reds for a carré, but at the size this is
+// shown five lenses leave each a few pixels across — so the two stop aspects
+// are told apart by the œilleton instead, which is how they are told apart on
+// the ground anyway.
+//
+// The spacing is the one thing kept from the real drawings: 1.6 times the
+// lamp diameter between centres. An earlier version used 1.1, so consecutive
+// lenses overlapped and the positions ran together. Hence the geometry checks.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,7 +26,7 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { signalKey } = await import(path.join(ROOT, 'src/client/core/SignalArt.ts'));
 
 const ART_DIR = path.join(ROOT, 'src/client/assets/signal');
-const KEYS = ['vl', 'a', 'semaphore', 'vl-carre', 'a-carre', 'carre'];
+const KEYS = ['vl', 'a', 'semaphore', 'carre'];
 const art = Object.fromEntries(
   await Promise.all(
     KEYS.map(async (k) => [k, await readFile(path.join(ART_DIR, `${k}.svg`), 'utf8')]),
@@ -41,8 +45,8 @@ const lamps = (svg) =>
     .map((m) => ({ cy: Number(m[1]), fill: m[2] }))
     .sort((a, b) => a.cy - b.cy);
 
-/** Which of the five standard positions a lamp sits at, 1 at the top. */
-const ROWS = { 26: 1, 42: 2, 58: 3, 74: 4, 90: 5 };
+/** The three lamp positions of an SNCF head: green, red, yellow, top down. */
+const ROWS = { 26: 'green', 42: 'red', 58: 'yellow' };
 const litRows = (svg, colour) =>
   lamps(svg)
     .filter((l) => l.fill === colour)
@@ -50,47 +54,51 @@ const litRows = (svg, colour) =>
 
 // ------------------------------------------------------------ the aspects ---
 
-test('voie libre is one green, at the third position', () => {
-  for (const k of ['vl', 'vl-carre']) {
-    assert.deepEqual(litRows(art[k], GREEN), [3], k);
-    assert.equal(litRows(art[k], RED).length, 0, `${k}: nothing red`);
-    assert.equal(litRows(art[k], YELLOW).length, 0, `${k}: nothing yellow`);
-  }
+test('voie libre is one green, at the top', () => {
+  assert.deepEqual(litRows(art.vl, GREEN), ['green']);
+  assert.equal(litRows(art.vl, RED).length, 0, 'nothing red');
+  assert.equal(litRows(art.vl, YELLOW).length, 0, 'nothing yellow');
 });
 
 test('avertissement is one yellow, at the bottom', () => {
-  for (const k of ['a', 'a-carre']) {
-    assert.deepEqual(litRows(art[k], YELLOW), [5], k);
-    assert.equal(litRows(art[k], GREEN).length, 0, `${k}: nothing green`);
+  assert.deepEqual(litRows(art.a, YELLOW), ['yellow']);
+  assert.equal(litRows(art.a, GREEN).length, 0, 'nothing green');
+});
+
+test('both stop aspects are one red, in the middle', () => {
+  assert.deepEqual(litRows(art.semaphore, RED), ['red']);
+  assert.deepEqual(litRows(art.carre, RED), ['red']);
+});
+
+test('the lamps are in the SNCF order, not the road one', () => {
+  // Green on top, red in the middle, yellow at the bottom. A semaphore-only
+  // target carries the lower three of the five positions on a full head —
+  // green at 79, red at 95, yellow at 111 — and that is the order here.
+  // Drawing the familiar road stack instead would be a signal that does not
+  // exist.
+  for (const [name, svg] of Object.entries(art)) {
+    assert.deepEqual(
+      lamps(svg).map((l) => ROWS[l.cy]),
+      ['green', 'red', 'yellow'],
+      name,
+    );
   }
 });
 
-test('a sémaphore is one red, at the fourth position', () => {
-  assert.deepEqual(litRows(art.semaphore, RED), [4]);
-});
-
-test('a carré is two reds, and they are not adjacent', () => {
-  // Positions 1 and 4, with a dark lamp between them. Lighting two lamps next
-  // to each other would be a signal that does not exist.
-  assert.deepEqual(litRows(art.carre, RED), [1, 4]);
-  const between = lamps(art.carre).filter((l) => ROWS[l.cy] === 2 || ROWS[l.cy] === 3);
-  assert.ok(between.every((l) => l.fill === DARK), 'the lamps between them are out');
-});
-
-test('the œilleton is lit on a sémaphore and out on a carré', () => {
-  // The small white light on the support is what says a signal may be passed.
-  // It is extinguished when a carré is closed, and on some installations that
-  // is the only visible difference between the two.
-  assert.match(art.semaphore, new RegExp(`cy="104" r="3.5" fill="${WHITE}"`), 'sémaphore: lit');
-  assert.match(art.carre, new RegExp(`cy="104" r="3.5" fill="${DARK}"`), 'carré: out');
+test('the œilleton is what tells a carré from a sémaphore', () => {
+  // Both are one red here, so the small white light on the support carries
+  // the whole distinction — which is how it works on the ground, and on some
+  // installations the only visible difference there too.
+  assert.match(art.semaphore, new RegExp(`cy="72" r="3.5" fill="${WHITE}"`), 'sémaphore: lit');
+  assert.match(art.carre, new RegExp(`cy="72" r="3.5" fill="${DARK}"`), 'carré: out');
+  // And the two must not be identical in any other respect either.
+  assert.notEqual(art.semaphore, art.carre);
 });
 
 test('only a stop aspect carries an œilleton at all', () => {
   // On a green or a yellow it would say something about permissiveness that
   // has nothing to do with the aspect being shown.
-  for (const k of ['vl', 'a', 'vl-carre', 'a-carre']) {
-    assert.ok(!art[k].includes('cy="104"'), `${k} should not have one`);
-  }
+  for (const k of ['vl', 'a']) assert.ok(!art[k].includes('cy="72"'), `${k} should not have one`);
 });
 
 // ----------------------------------------------------------- the geometry ---
@@ -105,23 +113,9 @@ test('the lamps are spaced well clear of each other', () => {
       const gap = ys[i + 1] - ys[i];
       assert.equal(gap, 16, `${name}: lamps ${gap} apart`);
       assert.ok(gap / 10 > 1.5, `${name}: only ${gap / 10} diameters apart`);
+      assert.ok(gap - 10 >= 5, `${name}: only ${gap - 10} units of black between lenses`);
     }
   }
-});
-
-test('a carré-capable target carries five lamps, a sémaphore three', () => {
-  // A signal that can only show a sémaphore is physically shorter, and these
-  // are drawn that way rather than padded to match.
-  for (const k of ['carre', 'vl-carre', 'a-carre']) assert.equal(lamps(art[k]).length, 5, k);
-  for (const k of ['semaphore', 'vl', 'a']) assert.equal(lamps(art[k]).length, 3, k);
-});
-
-test('the shorter target holds the lower three positions', () => {
-  // Not its own three: the mast stays put and the target grows upward, as on
-  // the ground. So a green is at the same height whichever signal it is on.
-  assert.deepEqual(lamps(art.vl).map((l) => ROWS[l.cy]), [3, 4, 5]);
-  const green = (k) => lamps(art[k]).find((l) => l.fill === GREEN).cy;
-  assert.equal(green('vl'), green('vl-carre'), 'a green sits at one height');
 });
 
 test('every lamp sits inside its target', () => {
@@ -163,7 +157,7 @@ test('the drawings are self-contained and decorative', async () => {
   assert.equal(files.length, KEYS.length, `drawings: ${files.join(', ')}`);
   for (const [name, svg] of Object.entries(art)) {
     assert.equal([...svg.matchAll(/<svg[\s>]/g)].length, 1, `${name}: one root`);
-    assert.match(svg, /viewBox="0 0 44 116"/, `${name}: one size for all`);
+    assert.match(svg, /viewBox="0 0 44 86"/, `${name}: one size for all`);
     assert.match(svg, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/, `${name}: needs a namespace`);
     // The label lives on the wrapper, so the drawing must not announce itself.
     assert.match(svg, /aria-hidden="true"/, `${name}: should be decorative`);
@@ -173,22 +167,16 @@ test('the drawings are self-contained and decorative', async () => {
 
 // ------------------------------------------------------------- the picking ---
 
-test('the panel follows the signal, the lamp follows the aspect', () => {
-  assert.equal(signalKey('libre', 'carre'), 'vl-carre');
+test('the aspect picks the lamp, and the signal kind picks between the two reds', () => {
+  assert.equal(signalKey('libre', 'carre'), 'vl');
   assert.equal(signalKey('libre', 'semaphore'), 'vl');
-  assert.equal(signalKey('avertissement', 'carre'), 'a-carre');
-  assert.equal(signalKey('avertissement', 'semaphore'), 'a');
+  assert.equal(signalKey('avertissement', 'carre'), 'a');
   assert.equal(signalKey('semaphore', 'carre'), 'carre');
   assert.equal(signalKey('semaphore', 'semaphore'), 'semaphore');
 });
 
-test('one signal keeps one panel as its aspect changes', () => {
-  // A train running up to a carré sees it turn from green through yellow to
-  // red; the target must not change size underneath that.
-  const carre = ['libre', 'avertissement', 'semaphore'].map((a) => signalKey(a, 'carre'));
-  assert.ok(carre.every((k) => lamps(art[k]).length === 5));
-  const sem = ['libre', 'avertissement', 'semaphore'].map((a) => signalKey(a, 'semaphore'));
-  assert.ok(sem.every((k) => lamps(art[k]).length === 3));
+test('a head has three lamps', () => {
+  for (const [name, svg] of Object.entries(art)) assert.equal(lamps(svg).length, 3, name);
 });
 
 test('a signal of unknown kind gets the commoner one', () => {

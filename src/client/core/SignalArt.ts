@@ -19,12 +19,8 @@ import type { TrainDTO } from '../../shared/types.ts';
 type Aspect = NonNullable<TrainDTO['traffic']>['aspect'];
 type Kind = NonNullable<TrainDTO['traffic']>['signalKind'];
 
-/**
- * The drawings. Two panels, because a real signal has two: one that can show
- * a carré carries five lamp positions, one that can only show a sémaphore
- * carries the lower three. The suffix says which panel.
- */
-export type SignalKey = 'vl' | 'a' | 'semaphore' | 'vl-carre' | 'a-carre' | 'carre';
+/** The drawings, one per aspect. */
+export type SignalKey = 'vl' | 'a' | 'semaphore' | 'carre';
 
 /**
  * The drawing for an aspect, or null when there is nothing to show.
@@ -32,21 +28,21 @@ export type SignalKey = 'vl' | 'a' | 'semaphore' | 'vl-carre' | 'a-carre' | 'car
  * `inconnu` draws nothing at all: an unlit head would be a claim that the
  * signal is dark, which is a real and serious aspect of its own.
  *
- * The panel follows the signal, not the aspect, so it stays the same size as
- * a train runs up to it and the picture does not jump. Where the kind is not
- * known the shorter panel is drawn — the sémaphore is much the commoner
- * signal on plain line — and its œilleton is left off rather than asserting a
- * permissiveness nothing has established.
+ * A carré and a sémaphore are both drawn as one red. On a real five-lamp
+ * target a carré is two reds, but a head that size leaves each lens a few
+ * pixels across at the size this is shown, so the head is the familiar three
+ * and the two are told apart by the œilleton — which is the mark that
+ * distinguishes them on the ground anyway, and on some installations the only
+ * visible one.
  */
 export function signalKey(aspect: Aspect, kind?: Kind): SignalKey | null {
-  const carre = kind === 'carre';
   switch (aspect) {
     case 'libre':
-      return carre ? 'vl-carre' : 'vl';
+      return 'vl';
     case 'avertissement':
-      return carre ? 'a-carre' : 'a';
+      return 'a';
     case 'semaphore':
-      return carre ? 'carre' : 'semaphore';
+      return kind === 'carre' ? 'carre' : 'semaphore';
     default:
       return null;
   }

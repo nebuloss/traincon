@@ -2,7 +2,7 @@
  * Where the signals are, and which of them can stop a train.
  *
  * 106 723 objects covering the whole national network, from the signalling
- * layer published by Carto Tchoo — see tools/fetch-signals.mjs for the
+ * layer published by Carto Tchoo — see data/geo/README.md for the
  * provenance and why the alternatives were not usable.
  *
  * The two that matter for spacing:
