@@ -27,24 +27,78 @@ const LENGTH_M: Readonly<Record<Family, number>> = {
 export const WIDTH_M = 2.9;
 
 /**
- * The colour that identifies each type, on the disc, the body and the graph.
+ * The liveries, as the trains are actually painted.
  *
- * A legend rather than a livery: loosely after the real branding — inOui's
- * carmine, the orange of the Corail sets Intercités inherited, TER's blue —
- * but picked so the four stay apart under simulated protanopia, deuteranopia
- * and tritanopia as well as normal vision. The first attempt paired a violet
- * TGV with a blue TER, which the simulation put almost on top of each other
- * for red-green deficiencies; carmine separates them. See test/palette.
+ * Two colours each, which is what the plan view needs: `body` is the roof —
+ * the surface you see from directly above — and `band` is the flank, which
+ * shows as a border round the roof panel and is the colour people name the
+ * train by.
  *
- * Colour is the secondary cue in any case — the shapes and lengths differ,
- * and that is what carries the distinction when the train is small.
+ *   inOui    grey with Carmillon, SNCF's house red, made from carmine and
+ *            vermilion
+ *   OUIGO    "le train rose et bleu": a blue body with fuchsia doors
+ *   Lyria    grey with the Franco-Swiss red
+ *   ICE      Deutsche Bahn white with the red waistline
+ *   IC       Intercités grey and blue; the night trains darker
+ *   TER      regional blue as the default — the real liveries are set by each
+ *            région and the feed does not say which one, so this stands in
+ *
+ * Sources: fr.wikipedia.org/wiki/Livrées_SNCF for Carmillon ("dégradé créé
+ * pour la SNCF à partir du rouge carmin et du rouge vermillon") and for the
+ * pink-and-blue Ouigo scheme; ouigo.com describes its own trains as "les TGV
+ * rose et bleu".
  */
-export const FAMILY_COLOR: Readonly<Record<Family, string>> = {
-  tgv: '#c81d6b',
-  ic: '#ff9e00',
-  ter: '#3a86ff',
-  other: '#adb5bd',
-};
+export interface Livery {
+  /** The roof, seen from above. */
+  body: string;
+  /** The flank, and the colour the train is known by. */
+  band: string;
+}
+
+export const LIVERY = {
+  inoui: { body: '#dee3e9', band: '#c1122c' },
+  ouigo: { body: '#1b3ea8', band: '#e5007d' },
+  lyria: { body: '#e4e8ee', band: '#9b1b30' },
+  ice: { body: '#f1f3f6', band: '#e2001a' },
+  ic: { body: '#c6cfda', band: '#1d4f91' },
+  icn: { body: '#4a5a72', band: '#2e6bb8' },
+  ter: { body: '#d6dde6', band: '#1f6fbf' },
+  other: { body: '#b9c2cc', band: '#6b7684' },
+} as const satisfies Readonly<Record<string, Livery>>;
+
+export type LiveryKey = keyof typeof LIVERY;
+
+/**
+ * Which livery a train wears.
+ *
+ * Taken from the operator the feed names rather than from the family, because
+ * that is the distinction that shows: an inOui and a OUIGO are both `tgv` and
+ * are painted nothing like each other.
+ */
+export function liveryOf(t: TrainDTO): LiveryKey {
+  // Keyed on the short service code rather than the printed label: the codes
+  // are stable and ASCII, where the label is display text that changes with
+  // branding and carries accents.
+  const byCode: Readonly<Record<string, LiveryKey>> = {
+    OGO: 'ouigo',
+    OUI: 'inoui',
+    LYR: 'lyria',
+    ICE: 'ice',
+    IC: 'ic',
+    ICN: 'icn',
+    TER: 'ter',
+  };
+  const known = byCode[t.service ?? ''];
+  if (known) return known;
+  // Anything the feed does not name falls back to its family: a TGV with no
+  // code is far likelier to be an inOui than anything else.
+  return t.family === 'tgv' ? 'inoui' : t.family === 'ter' ? 'ter' : t.family === 'ic' ? 'ic' : 'other';
+}
+
+/** The colour this train is known by — its flank. */
+export function trainColor(t: TrainDTO): string {
+  return LIVERY[liveryOf(t)].band;
+}
 
 /** The glyph shown on the disc at low zoom. */
 const GLYPH: Readonly<Record<Family, string>> = {
@@ -54,8 +108,14 @@ const GLYPH: Readonly<Record<Family, string>> = {
   other: '🚂',
 };
 
-/** Above this zoom the train is drawn to scale rather than as a disc. */
-export const PLAN_ZOOM = 15.2;
+/**
+ * Above this zoom the train is drawn to scale rather than as a disc.
+ *
+ * Set by what the artwork needs to read: at true length a 26 m coach is
+ * about 16 px here and grows quickly, and below it there is nothing to see
+ * but a smear.
+ */
+export const PLAN_ZOOM = 16;
 
 /** Metres per pixel at a given zoom and latitude. */
 export function metresPerPixel(zoom: number, lat: number): number {
@@ -73,9 +133,9 @@ export function familyGlyph(t: TrainDTO): string {
   return GLYPH[t.family] ?? GLYPH.other;
 }
 
-/** The colour that stands for this train's type. */
+/** The colour that stands for this train — kept as the old name's meaning. */
 export function familyColor(t: TrainDTO): string {
-  return FAMILY_COLOR[t.family] ?? FAMILY_COLOR.other;
+  return trainColor(t);
 }
 
 /** The disc form, for when the train would be too small to draw. */

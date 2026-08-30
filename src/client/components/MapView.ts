@@ -12,19 +12,13 @@ import { tr } from '../core/I18n.ts';
 import { Reckoner } from '../core/Reckoner.ts';
 import { Track } from '../core/Track.ts';
 import { aspectLamp } from './SignalAspect.ts';
-import {
-  FAMILY_COLOR,
-  PLAN_ZOOM,
-  WIDTH_M,
-  discView,
-  metresPerPixel,
-  trainLengthM,
-} from './TrainIcon.ts';
-import { trainBody } from '../core/TrainBody.ts';
+import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM } from './TrainIcon.ts';
+import { trainCars } from '../core/TrainBody.ts';
+import { ensureLivery, iconScale } from '../core/TrainArt.ts';
 import { distanceFraction } from '../../shared/motion.ts';
 import { Theme } from '../core/Theme.ts';
 import type { Api } from '../core/Api.ts';
-import type { JourneyGeo, JourneyLine, TrainBodyGeo, TrainDTO } from '../../shared/types.ts';
+import type { JourneyGeo, JourneyLine, TrainCarsGeo, TrainDTO } from '../../shared/types.ts';
 
 /** MapLibre is loaded from a script tag; this is the surface we rely on. */
 interface MapLike {
@@ -34,6 +28,9 @@ interface MapLike {
   addSource(id: string, src: unknown): void;
   addLayer(layer: unknown, before?: string): void;
   setPaintProperty(layer: string, prop: string, value: unknown): void;
+  setLayoutProperty(layer: string, prop: string, value: unknown): void;
+  hasImage(id: string): boolean;
+  addImage(id: string, image: ImageData, options?: { pixelRatio?: number }): void;
   getSource(id: string): { setData(d: unknown): void } | undefined;
   getLayer(id: string): unknown;
   removeLayer(id: string): void;
@@ -59,11 +56,8 @@ declare const maplibregl: {
 
 export type MapMode = 'train' | 'route';
 
-/** The narrowest the drawn body may get on screen, in pixels. */
-const MIN_BODY_PX = 11;
-
 /** Nothing to draw — used to create and to clear the train-body source. */
-const EMPTY_BODY: TrainBodyGeo = { type: 'FeatureCollection', features: [] };
+const EMPTY_BODY: TrainCarsGeo = { type: 'FeatureCollection', features: [] };
 
 export class MapView {
   private map: MapLike | null = null;
@@ -74,6 +68,8 @@ export class MapView {
   private drawn: TrainDTO | null = null;
   /** Where along the route it was last drawn — the animated position, not the reported one. */
   private drawnKm: number | null = null;
+  /** Liveries whose artwork has been handed to the map already. */
+  private readonly liveries = new Set<string>();
   private theme: 'light' | 'dark' | null = null;
   private pathFor: string | null = null;
   private geo: JourneyGeo | null = null;
@@ -180,28 +176,9 @@ export class MapView {
           '<a href="https://carto.tchoo.net" target="_blank" rel="noopener">Carto Tchoo</a>',
       });
 
-      // Added before the journey line exists, so it naturally draws beneath
-      // it and the train's own route stays legible on top.
-      this.map.addLayer(
-        {
-          id: 'osm-tracks',
-          type: 'line',
-          source: 'osmrail',
-          'source-layer': 'tracks',
-          minzoom: 13,
-          paint: {
-            'line-color': Theme.token('rail'),
-            'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0.6, 17, 2.4],
-            // Faded in over a zoom level so it does not appear abruptly. The
-            // ramp used to end where the layer began, so the tracks were fully
-            // transparent at every zoom they were drawn at.
-            'line-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.5, 0.8],
-          },
-        },
-      );
-
-      // Platforms are polygons in these tiles, not edges: a fill, with its
-      // outline drawn separately so a narrow platform still reads at z15.
+      // Platforms first, so the track is drawn over them the way it lies.
+      // They are polygons in these tiles, not edges: a fill, with its outline
+      // drawn separately so a narrow platform still reads at z15.
       this.map.addLayer({
         id: 'osm-platforms',
         type: 'fill',
@@ -210,7 +187,7 @@ export class MapView {
         minzoom: 15,
         paint: {
           'fill-color': Theme.token('muted'),
-          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.35],
+          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.45],
         },
       });
       this.map.addLayer({
@@ -221,10 +198,71 @@ export class MapView {
         minzoom: 15,
         paint: {
           'line-color': Theme.token('muted'),
-          'line-width': 1,
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.7],
+          'line-width': 1.2,
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.85],
         },
       });
+
+      // Track, drawn as track: a brown bed of sleepers with two steel rails
+      // running over it. Far out that collapses to a single brown line, which
+      // is all the width there is for; the sleepers and the rails appear once
+      // there are pixels to draw them in.
+      //
+      // Four layers over one source rather than one line in a compromise
+      // colour, because the compromise was the problem: a slate line at this
+      // zoom read as one more grey line on a grey basemap.
+      this.map.addLayer({
+        id: 'osm-track-bed',
+        type: 'line',
+        source: 'osmrail',
+        'source-layer': 'tracks',
+        minzoom: 12.5,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': Theme.token('tie'),
+          'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1, 16, 3.5, 19, 9],
+          // Faded in over a zoom level so it does not appear abruptly. The
+          // ramp used to end where the layer began, so the tracks were fully
+          // transparent at every zoom they were drawn at.
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 12.5, 0, 13.5, 0.9],
+        },
+      });
+
+      // The sleepers themselves: the bed again, dashed across. Dash lengths
+      // are multiples of the line width, so the ties keep their spacing as
+      // the track thickens.
+      this.map.addLayer({
+        id: 'osm-track-ties',
+        type: 'line',
+        source: 'osmrail',
+        'source-layer': 'tracks',
+        minzoom: 16.5,
+        paint: {
+          'line-color': Theme.token('tie-dark'),
+          'line-width': ['interpolate', ['linear'], ['zoom'], 16.5, 3.5, 19, 9],
+          'line-dasharray': [0.3, 0.45],
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 16.5, 0, 17.5, 0.75],
+        },
+      });
+
+      // Two rails, offset either side of the centreline — which is what makes
+      // it read as track rather than as a brown line.
+      for (const side of [-1, 1] as const) {
+        this.map.addLayer({
+          id: `osm-track-rail-${side < 0 ? 'l' : 'r'}`,
+          type: 'line',
+          source: 'osmrail',
+          'source-layer': 'tracks',
+          minzoom: 16,
+          paint: {
+            'line-color': Theme.token('steel'),
+            'line-width': ['interpolate', ['linear'], ['zoom'], 16, 0.7, 19, 1.8],
+            'line-offset': ['interpolate', ['linear'], ['zoom'], 16, 1 * side, 19, 2.6 * side],
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 16, 0, 17, 0.95],
+          },
+        });
+      }
+
       // Platform numbers, from OSM's ref. Which platform a train is at is not
       // published by anyone — GTFS has no such field, Navitia's platform_code
       // is empty, and Carto Tchoo's own endpoint for it is called
@@ -256,77 +294,35 @@ export class MapView {
   }
 
   /**
-   * The train drawn on the ground, for when the zoom makes it worth drawing.
+   * The train drawn on the ground, once the zoom makes it worth drawing.
    *
-   * Added empty and filled as the train moves. Kept as a source rather than a
-   * marker because the body has to bend with the track — see core/TrainBody,
-   * which also explains what each `part` is.
+   * One symbol per vehicle, from the artwork in assets/train, each rotated to
+   * its own heading — which is what lets the train bend round a curve. See
+   * core/TrainBody for the layout and core/TrainArt for the drawings.
    *
-   * Stacked the way you would see them from above: livery, then the roof
-   * panel darkening it, then everything standing on the roof.
+   * Overlap is forced on. Symbols are normally allowed to hide each other to
+   * keep labels readable, and a train is precisely a row of symbols touching
+   * end to end, so left to itself MapLibre would drop every other vehicle.
    */
   private addTrainBody(): void {
     if (!this.map || this.map.getSource('train-body')) return;
     this.map.addSource('train-body', { type: 'geojson', data: EMPTY_BODY });
-
-    const only = (part: string): unknown[] => ['==', ['get', 'part'], part];
-
-    // The livery, and the only piece coloured by the kind of train it is.
     this.map.addLayer({
-      id: 'train-body-fill',
-      type: 'fill',
+      id: 'train-cars',
+      type: 'symbol',
       source: 'train-body',
       minzoom: PLAN_ZOOM,
-      filter: only('body'),
-      paint: {
-        'fill-color': [
-          'match',
-          ['get', 'family'],
-          'tgv',
-          FAMILY_COLOR.tgv,
-          'ic',
-          FAMILY_COLOR.ic,
-          'ter',
-          FAMILY_COLOR.ter,
-          FAMILY_COLOR.other,
-        ],
-        'fill-opacity': 0.95,
-      },
-    });
-
-    // From above a train is mostly roof: a darker panel inset in the livery,
-    // which leaves the colour showing as a border down each side.
-    for (const [id, part, colour, opacity] of [
-      ['train-roof', 'roof', '#0b0e13', 0.34],
-      ['train-gangway', 'gangway', '#080a0e', 0.6],
-      ['train-kit', 'kit', '#dfe4ec', 0.5],
-      ['train-panto', 'panto', '#0a0d12', 0.85],
-      ['train-glass', 'glass', '#0d1219', 0.8],
-    ] as const) {
-      this.map.addLayer({
-        id,
-        type: 'fill',
-        source: 'train-body',
-        // The detail is only worth drawing once there are pixels for it.
-        minzoom: part === 'roof' || part === 'gangway' ? PLAN_ZOOM : PLAN_ZOOM + 0.8,
-        filter: only(part),
-        paint: { 'fill-color': colour, 'fill-opacity': opacity },
-      });
-    }
-
-    // The outline is the train's punctuality — set in drawMarker, where the
-    // delay tier is known. Only the body carries it; outlining the roof kit
-    // would just be noise.
-    this.map.addLayer({
-      id: 'train-body-line',
-      type: 'line',
-      source: 'train-body',
-      minzoom: PLAN_ZOOM,
-      filter: only('body'),
-      paint: {
-        'line-color': Theme.token('ok'),
-        'line-width': 1.4,
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], PLAN_ZOOM, 0.35, 16.5, 0.9],
+      layout: {
+        'icon-image': ['get', 'icon'],
+        'icon-rotate': ['get', 'bearing'],
+        // Turn with the map, not with the screen: these are objects lying on
+        // the ground, not labels pinned to it.
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-padding': 0,
+        // Set from the zoom on every draw, so the train stays at true scale.
+        'icon-size': 0.1,
       },
     });
   }
@@ -431,7 +427,7 @@ export class MapView {
         // the first train shown, long after the body layers exist at startup,
         // so left to the default order the route line would be drawn over the
         // train.
-        const underTrain = this.map.getLayer('train-body-fill') ? 'train-body-fill' : undefined;
+        const underTrain = this.map.getLayer('train-cars') ? 'train-cars' : undefined;
         this.map.addLayer(
           {
             id: 'follow-path',
@@ -638,31 +634,32 @@ export class MapView {
     const wanted = this.track !== null && km !== null && zoom >= PLAN_ZOOM;
 
     // Swap the representations first, and outside the source guard: if the
-    // body cannot be drawn the disc must stay, and if it can the disc must go.
+    // train cannot be drawn the disc must stay, and if it can the disc must go.
     const el = this.marker?.getElement();
     const src = this.map?.getSource('train-body');
     if (el) el.classList.toggle('is-bodied', wanted && Boolean(src));
-    if (!src) return;
+    if (!src || !this.map) return;
 
     if (!wanted) {
       src.setData(EMPTY_BODY);
       return;
     }
 
-    // Drawn at true length but not at true width. A rail vehicle is 2.9 m
-    // across against 200 m long; at the zooms this appears at that is about
-    // one pixel, which is a hairline rather than a train. Length is the
-    // dimension that means something here — whether the train reaches the end
-    // of the platform — so that stays honest and the width gets a floor.
+    // The artwork has to exist before the layer can name it. Loading is
+    // asynchronous, so the first draw of a livery puts nothing on screen and
+    // the next one — a moment later, from the animation loop — puts it there.
+    const livery = liveryOf(t);
+    if (!this.liveries.has(livery)) {
+      this.liveries.add(livery);
+      void ensureLivery(this.map, livery).then((ok) => {
+        if (!ok) this.liveries.delete(livery);
+      });
+    }
+
     const here = this.track!.at(km!);
     const mpp = metresPerPixel(zoom, here?.lat ?? 47);
-    const widthM = Math.max(WIDTH_M, MIN_BODY_PX * mpp);
-    // And no more divisions than there are pixels to show them in, or a long
-    // train reads as hatching.
-    const lengthPx = trainLengthM(t) / mpp;
-    src.setData(
-      trainBody(this.track!, km!, trainLengthM(t), widthM, t.family, Math.floor(lengthPx / 18)),
-    );
+    this.map.setLayoutProperty('train-cars', 'icon-size', iconScale(mpp));
+    src.setData(trainCars(this.track!, km!, trainLengthM(t), t.family, livery, 24));
   }
 
   private stopAnimation(): void {
@@ -751,11 +748,7 @@ export class MapView {
       tier === 'cancelled' ? 'dead' : tier === 'verylate' ? 'verylate' : tier === 'late' ? 'late' : 'ok',
     );
     el.style.color = tierColor;
-    // The body is filled by type and outlined by punctuality, so close up you
-    // get both at once — a carmine set edged in red is a late TGV.
-    if (this.map?.getLayer('train-body-line')) {
-      this.map.setPaintProperty('train-body-line', 'line-color', tierColor);
-    }
+
 
     // Only the pointer turns. A stopped train has no meaningful heading, so it
     // is hidden rather than left pointing at wherever it last went.

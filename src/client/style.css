@@ -30,6 +30,12 @@
   --dead: #8695a6;
   --rail: #9fb0c4;
   --rail-hs: #6f8fb5;
+  /* Surveyed track, drawn close in as the thing it is: creosoted sleepers
+     with steel rails over them. --rail stays the faint grey the whole network
+     is drawn in; these are for when the track itself is the subject. */
+  --tie: #7a5a3f;
+  --tie-dark: #4f3a28;
+  --steel: #dfe5ec;
   --shadow: 0 8px 30px rgba(16, 23, 32, .16);
   --radius: 14px;
   font-synthesis-weight: none;
@@ -42,6 +48,7 @@
     --violet: #a98bff; --ok: #2ecc8f; --warn: #f5a524;
     --late: #f0b429; --verylate: #fb8b3c; --bad: #f2545b;
     --dead: #7a8798; --rail: #3a4552; --rail-hs: #5b7a9e;
+    --tie: #6b4f37; --tie-dark: #3f2e20; --steel: #b6c2d0;
     --shadow: 0 8px 30px rgba(0, 0, 0, .5);
   }
 }
@@ -52,6 +59,7 @@
   --violet: #a98bff; --ok: #2ecc8f; --warn: #f5a524;
   --late: #f0b429; --verylate: #fb8b3c; --bad: #f2545b;
   --dead: #7a8798; --rail: #3a4552; --rail-hs: #5b7a9e;
+    --tie: #6b4f37; --tie-dark: #3f2e20; --steel: #b6c2d0;
   --shadow: 0 8px 30px rgba(0, 0, 0, .5);
 }
 
@@ -131,13 +139,18 @@ button { touch-action: manipulation; }
  */
 .sig {
   flex: 0 0 auto;
-  display: block; height: 40px; width: auto;
+  display: block;
+  /* Explicit on both axes. `width: auto` on an SVG inside a flex container
+     resolves to zero on iOS Safari, which is why this rendered as nothing on
+     a phone while being fine on a desktop. */
+  width: 26px; height: 40px;
+  aspect-ratio: 26 / 40;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .4));
 }
 .sig-wrap { flex: 0 0 auto; display: inline-flex; align-items: center; }
 /* In the map foot it stands beside the speed roundel, so it matches its height. */
 .map-aspect { flex: 0 0 auto; display: inline-flex; align-items: center; }
-.map-aspect .sig { height: 30px; }
+.map-aspect .sig { width: 19.5px; height: 30px; }
 
 .ov-signal {
   display: flex; align-items: flex-start; gap: 10px;

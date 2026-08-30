@@ -22,10 +22,22 @@ const added = [...src.matchAll(/id: '([\w-]+)',\n\s*type: '(?:line|fill|circle|s
   (m) => m[1],
 );
 
+test('the train is drawn from artwork, one symbol per vehicle', () => {
+  // A single icon for the whole train cannot bend, and a train on the curve
+  // into a station is exactly where you are looking when you zoom in.
+  assert.match(src, /type: 'symbol',\n\s*source: 'train-body'/, 'a symbol layer');
+  assert.match(src, /'icon-rotate': \['get', 'bearing'\]/, 'each vehicle turns on its own');
+  assert.match(src, /'icon-rotation-alignment': 'map'/, 'they lie on the ground, not on the screen');
+  // Symbols hide each other by default to keep labels readable, and a train
+  // is a row of symbols touching end to end.
+  assert.match(src, /'icon-allow-overlap': true/, 'or every other vehicle vanishes');
+  assert.match(src, /'icon-ignore-placement': true/);
+});
+
 test('the map adds the layers this test thinks it does', () => {
   // A guard on the guard: if the layers are renamed, the assertions below
   // would quietly pass against nothing.
-  for (const id of ['follow-path', 'train-body-fill', 'train-body-line', 'osm-tracks']) {
+  for (const id of ['follow-path', 'train-cars', 'osm-track-bed']) {
     assert.ok(added.includes(id), `no layer called ${id} any more`);
   }
 });
@@ -43,7 +55,7 @@ test('the route layers are inserted under the train, not on top of it', () => {
 test('the insertion point is the train body, and it exists by then', () => {
   assert.match(
     src,
-    /const underTrain = this\.map\.getLayer\('train-body-fill'\)\s*\?\s*'train-body-fill'\s*:\s*undefined;/,
+    /const underTrain = this\.map\.getLayer\('train-cars'\)\s*\?\s*'train-cars'\s*:\s*undefined;/,
     'the beforeId should name the body layer and tolerate its absence',
   );
   // The body layers are created during init, the route layers on first show,
@@ -56,7 +68,7 @@ test('the insertion point is the train body, and it exists by then', () => {
 
 test('the train body is drawn above the surveyed tracks', () => {
   assert.ok(
-    added.indexOf('osm-tracks') < added.indexOf('train-body-fill'),
+    added.indexOf('osm-track-bed') < added.indexOf('train-cars'),
     'a train hidden under the station track layout would be worse than useless',
   );
 });
@@ -90,6 +102,16 @@ const OSMRAIL_LAYERS = new Set([
   'tracks',
   'tunnels',
 ]);
+
+test('track is drawn as track, not as a line', () => {
+  // Brown sleepers with two steel rails offset either side of the centreline.
+  // A single line in a compromise grey was the version nobody could see.
+  assert.ok(added.includes('osm-track-bed'), 'a sleeper bed');
+  assert.ok(src.includes("id: 'osm-track-ties'"), 'sleepers across it');
+  assert.match(src, /line-offset/, 'rails offset from the centre');
+  assert.equal([...src.matchAll(/osm-track-rail-/g)].length, 1, 'both rails from one loop');
+  assert.match(src, /for \(const side of \[-1, 1\]/, 'one rail each side');
+});
 
 test('every source-layer asked for is one the tiles carry', () => {
   // A wrong name is not an error anywhere: MapLibre renders an empty layer and
@@ -132,4 +154,29 @@ test('the marker is hidden by something MapLibre will not overwrite', () => {
   const rootOpacity = rule.some((r) => /^\.train-marker\.is-bodied\s*\{/.test(r) && /opacity/.test(r));
   assert.ok(!rootOpacity, 'opacity on the marker root is overwritten by MapLibre');
   assert.ok(rule.some((r) => /display:\s*none/.test(r)), 'hide the children instead');
+});
+
+test('every palette token the map asks for is actually defined', () => {
+  // Theme.token reads a CSS custom property and returns '' when there is no
+  // such property. MapLibre rejects '' as a colour by throwing — and the
+  // station-track setup catches everything, so one typo here silently drops
+  // the entire layout with no error in the console.
+  const asked = new Set([...src.matchAll(/Theme\.token\('([\w-]+)'\)/g)].map((m) => m[1]));
+  assert.ok(asked.size > 0, 'no tokens found to check');
+  const defined = new Set([...css.matchAll(/^\s*--([\w-]+):/gm)].map((m) => m[1]));
+  for (const name of asked) {
+    assert.ok(defined.has(name), `MapView reads --${name}, which the stylesheet never defines`);
+  }
+});
+
+test('a token used by the map is defined for the dark theme too', () => {
+  // Otherwise it resolves to '' after a theme swap and takes the layer with
+  // it, which is worse than a wrong colour: it is no layer at all.
+  const asked = [...src.matchAll(/Theme\.token\('([\w-]+)'\)/g)].map((m) => m[1]);
+  const dark = css.slice(css.indexOf('[data-theme="dark"]'));
+  const inherited = new Set(['ok', 'bad', 'fg', 'panel', 'muted', 'accent', 'dead', 'late', 'verylate', 'rail', 'rail-hs']);
+  for (const name of new Set(asked)) {
+    if (inherited.has(name)) continue;
+    assert.ok(dark.includes(`--${name}:`), `--${name} has no dark-theme value`);
+  }
 });

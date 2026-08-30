@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 264 29">
+  <!-- Corail coach, 26.4 m. Square-ended, with a vestibule and a door leaf at
+       each end and two roof units between them. -->
+  <rect x="0" y="0" width="264" height="29" rx="3" fill="{{band}}"/>
+  <rect x="5" y="4.5" width="254" height="20" rx="3" fill="{{body}}"/>
+  <!-- The rib along the crown of the roof. -->
+  <rect x="5" y="13.7" width="254" height="1.6" fill="#8d99a8" opacity=".55"/>
+  <!-- Air conditioning. -->
+  <rect x="52" y="8.5" width="30" height="12" rx="2" fill="#b7c1cd"/>
+  <rect x="182" y="8.5" width="30" height="12" rx="2" fill="#b7c1cd"/>
+  <!-- Door leaves, at the vestibules. -->
+  <rect x="20" y="0" width="10" height="29" fill="#101720" opacity=".34"/>
+  <rect x="234" y="0" width="10" height="29" fill="#101720" opacity=".34"/>
+  <!-- Gangway connections. -->
+  <rect x="0" y="8" width="5" height="13" rx="2" fill="#101720" opacity=".55"/>
+  <rect x="259" y="8" width="5" height="13" rx="2" fill="#101720" opacity=".55"/>
+</svg>

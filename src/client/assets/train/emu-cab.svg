@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 270 29">
+  <!-- Multiple-unit end car, 27 m: a driving cab with a rounded front, and
+       the wide passenger doors that mark a regional unit out from a coach. -->
+  <path d="M3 0 H228 Q270 0 270 14.5 Q270 29 228 29 H3 Q0 29 0 26 V3 Q0 0 3 0 Z" fill="{{band}}"/>
+  <path d="M8 4.5 H228 Q256 4.5 256 14.5 Q256 24.5 228 24.5 H8 Q4 24.5 4 21.5 V7.5 Q4 4.5 8 4.5 Z" fill="{{body}}"/>
+  <rect x="4" y="13.7" width="230" height="1.6" fill="#8d99a8" opacity=".5"/>
+  <path d="M240 7 Q258 9.5 261 14.5 Q258 19.5 240 22 Z" fill="#16202c" opacity=".85"/>
+  <rect x="46" y="3" width="11" height="23" rx="1.5" fill="#2b3440"/>
+  <rect x="48.5" y="3" width="6" height="23" fill="#7c8896" opacity=".8"/>
+  <rect x="90" y="8.5" width="32" height="12" rx="2" fill="#b7c1cd"/>
+  <rect x="150" y="8.5" width="32" height="12" rx="2" fill="#b7c1cd"/>
+  <rect x="24" y="0" width="12" height="29" fill="#101720" opacity=".34"/>
+  <rect x="130" y="0" width="12" height="29" fill="#101720" opacity=".34"/>
+  <rect x="200" y="0" width="12" height="29" fill="#101720" opacity=".34"/>
+  <rect x="0" y="8" width="4" height="13" rx="1.5" fill="#101720" opacity=".55"/>
+</svg>

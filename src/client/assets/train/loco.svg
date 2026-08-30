@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 175 29">
+  <!-- Electric locomotive, 17.5 m. Blunt where a TGV is pointed, and shorter
+       than the coaches it hauls — which is what marks an Intercités out. -->
+  <path d="M3 0 H158 Q175 0 175 10 V19 Q175 29 158 29 H3 Q0 29 0 26 V3 Q0 0 3 0 Z" fill="{{band}}"/>
+  <path d="M8 4.5 H156 Q166 4.5 166 11 V18 Q166 24.5 156 24.5 H8 Q4 24.5 4 21.5 V7.5 Q4 4.5 8 4.5 Z" fill="{{body}}"/>
+  <rect x="4" y="13.7" width="160" height="1.6" fill="#8d99a8" opacity=".5"/>
+  <!-- Cab windscreen. -->
+  <path d="M158 6.5 Q170 8.5 171 14.5 Q170 20.5 158 22.5 Z" fill="#16202c" opacity=".85"/>
+  <!-- Two pantographs, as most French electrics carry. -->
+  <rect x="34" y="3" width="11" height="23" rx="1.5" fill="#2b3440"/>
+  <rect x="36.5" y="3" width="6" height="23" fill="#7c8896" opacity=".8"/>
+  <rect x="104" y="3" width="11" height="23" rx="1.5" fill="#2b3440"/>
+  <rect x="106.5" y="3" width="6" height="23" fill="#7c8896" opacity=".8"/>
+  <rect x="60" y="9" width="30" height="11" rx="2" fill="#b7c1cd"/>
+  <rect x="0" y="9" width="4" height="11" rx="1.5" fill="#101720" opacity=".6"/>
+</svg>

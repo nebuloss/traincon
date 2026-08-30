@@ -326,12 +326,15 @@ export type JourneyGeo = FeatureCollection<JourneyLine | JourneyStop>;
 
 export type RailGeo = FeatureCollection<Feature<LineStringGeom, { v: number; hs: 0 | 1 }>>;
 
-/** The pieces the drawn train is made of — see client/core/TrainBody. */
-export type TrainPart = 'body' | 'roof' | 'glass' | 'panto' | 'kit' | 'gangway';
+/** The kinds of vehicle the drawn train is assembled from. */
+export type VehicleRole = 'power' | 'artic' | 'loco' | 'coach' | 'emu-cab' | 'emu-mid';
 
-/** The train drawn to scale on the ground, seen from above. */
-export type TrainBodyGeo = FeatureCollection<
-  Feature<PolygonGeom, { part: TrainPart; lead: 0 | 1; family: Family }>
+/**
+ * One placed vehicle: where it is, which way it faces, and which drawing to
+ * use — see client/core/TrainBody and the artwork in client/assets/train.
+ */
+export type TrainCarsGeo = FeatureCollection<
+  Feature<PointGeom, { icon: string; role: VehicleRole; bearing: number; lead: 0 | 1 }>
 >;
 
 /** One line of the day's worst-delays board. */

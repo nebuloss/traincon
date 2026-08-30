@@ -1,19 +1,32 @@
-// The train drawn on the ground, seen from above.
+// Where each vehicle of a train is put on the track.
 //
-// The point of drawing it as geometry rather than as an icon is that a 200 m
-// train on the approach to a station is on a curve, and a rigid box laid over
-// a curve leaves the rails at both ends. These check the things that justify
-// the complexity: that the cars follow the track, that each one still looks
-// like a car, and that the plan view has the parts a plan view should have.
+// The train is drawn from artwork — one SVG per kind of vehicle — and this is
+// the part that decides which vehicles it is made of and where each one goes.
+// The reason it is per vehicle rather than one image for the whole train is a
+// curve: a 200 m set on the approach to a station spans an arc, and a single
+// rigid image laid over it stands about 8 m off the rails at each end.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { Track } = await import(path.join(ROOT, 'src/client/core/Track.ts'));
-const { carCount, trainBody } = await import(path.join(ROOT, 'src/client/core/TrainBody.ts'));
+const { VEHICLE_M, consist, consistLength, trainCars } = await import(
+  path.join(ROOT, 'src/client/core/TrainBody.ts')
+);
+
+const ART_DIR = path.join(ROOT, 'src/client/assets/train');
+const ART_FILE = {
+  power: 'power-car',
+  artic: 'coach-artic',
+  loco: 'loco',
+  coach: 'coach',
+  'emu-cab': 'emu-cab',
+  'emu-mid': 'emu-mid',
+};
 
 const LAT0 = 44.826; // Bordeaux, near enough for the scale factors.
 const LON0 = -0.556;
@@ -40,296 +53,195 @@ function curve(radiusKm) {
   return new Track(pts);
 }
 
-/** Local metres, east/north of the reference point — the shapes are small. */
 const xy = ([lon, lat]) => [(lon - LON0) * KM_PER_DEG * 1000 * COS, (lat - LAT0) * KM_PER_DEG * 1000];
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+const at = (f) => xy(f.geometry.coordinates);
 
-const parts = (geo, part) => geo.features.filter((f) => f.properties.part === part);
-const bodies = (geo) => parts(geo, 'body');
+// ------------------------------------------------------------- the consist ---
 
-/** The corners of a feature, in metres, without the repeated closing point. */
-const corners = (f) => f.geometry.coordinates[0].slice(0, -1).map(xy);
-
-/**
- * The long axis of a shape, by principal component — robust whatever the ends
- * look like, which matters now the nose is a curve and the tail is rounded.
- */
-function axis(pts) {
-  const c = pts.reduce((a, p) => [a[0] + p[0] / pts.length, a[1] + p[1] / pts.length], [0, 0]);
-  let xx = 0, yy = 0, xyv = 0;
-  for (const p of pts) {
-    const dx = p[0] - c[0], dy = p[1] - c[1];
-    xx += dx * dx; yy += dy * dy; xyv += dx * dy;
-  }
-  // Direction of maximum variance.
-  const theta = 0.5 * Math.atan2(2 * xyv, xx - yy);
-  return { centre: c, dir: [Math.cos(theta), Math.sin(theta)] };
-}
-
-/**
- * Bearing of a body in degrees, and the midpoints of its two ends.
- *
- * The principal axis has no direction of its own — it comes out pointing
- * either way — so it is turned to agree with the track, or "front" and "back"
- * swap from one car to the next.
- */
-function frame(f, track) {
-  const pts = corners(f);
-  const { centre } = axis(pts);
-  let { dir } = axis(pts);
-  if (track) {
-    const lon = LON0 + centre[0] / (KM_PER_DEG * 1000 * COS);
-    const lat = LAT0 + centre[1] / (KM_PER_DEG * 1000);
-    const on = track.at(track.distanceAt(lat, lon));
-    const b = ((on?.bearing ?? 0) * Math.PI) / 180;
-    const along = [Math.sin(b), Math.cos(b)];
-    if (dir[0] * along[0] + dir[1] * along[1] < 0) dir = [-dir[0], -dir[1]];
-  }
-  const proj = pts.map((p) => (p[0] - centre[0]) * dir[0] + (p[1] - centre[1]) * dir[1]);
-  const lo = Math.min(...proj), hi = Math.max(...proj);
-  const near = (t) => pts.filter((_, i) => Math.abs(proj[i] - t) < 0.6);
-  const end = (t) => {
-    const g = near(t);
-    return g.length > 1 ? mid(g[0], g[g.length - 1]) : g[0] ?? centre;
-  };
-  return { back: end(lo), front: end(hi), length: hi - lo, deg: (Math.atan2(dir[0], dir[1]) * 180) / Math.PI };
-}
-
-/** Area by the shoelace formula, in square metres. */
-const area = (f) => {
-  const p = corners(f);
-  let a = 0;
-  for (let i = 0; i < p.length; i++) {
-    const q = p[(i + 1) % p.length];
-    a += p[i][0] * q[1] - q[0] * p[i][1];
-  }
-  return Math.abs(a) / 2;
-};
-
-test('a train is divided into something like real cars', () => {
-  assert.equal(carCount(200), 8); // a TGV rake, near enough
-  assert.equal(carCount(80), 3); // a regional unit
-  assert.ok(carCount(10) >= 2, 'never a single undivided blob');
-  assert.ok(carCount(5000) <= 24, 'and never hatching');
+test('a TGV has a power car at each end', () => {
+  // Both ends are noses, which is why a TGV looks the same coming or going.
+  const r = consist('tgv', 200);
+  assert.equal(r[0], 'power');
+  assert.equal(r[r.length - 1], 'power');
+  assert.ok(r.slice(1, -1).every((v) => v === 'artic'), 'articulated between them');
 });
 
-test('the body is laid along the track, not across it', () => {
-  const track = straight(10);
-  const body = trainBody(track, 5, 200, 2.9, 'ter');
-  const cars = bodies(body);
-  assert.ok(cars.length >= 2);
-  // Due north, and every car agrees. The axis is undirected, so ±180 is fine.
-  for (const f of cars) {
-    const d = Math.abs(frame(f, track).deg) % 180;
-    assert.ok(d < 1 || d > 179, `car points ${d.toFixed(1)}° off north`);
+test('an Intercités is a locomotive and a rake of coaches', () => {
+  // Hauled, not a multiple unit — and the loco leads.
+  const r = consist('ic', 190);
+  assert.equal(r[r.length - 1], 'loco', 'the loco is at the front');
+  assert.ok(r.slice(0, -1).every((v) => v === 'coach'), 'Corail behind it');
+  assert.equal(r.filter((v) => v === 'loco').length, 1, 'only the one');
+});
+
+test('a TER is a multiple unit with a cab at each end', () => {
+  const r = consist('ter', 80);
+  assert.equal(r[0], 'emu-cab');
+  assert.equal(r[r.length - 1], 'emu-cab');
+  assert.ok(!r.includes('loco'), 'no separate locomotive');
+});
+
+test('the three families are put together differently', () => {
+  // The whole point of the artwork: you can tell them apart from above.
+  const shapes = ['tgv', 'ic', 'ter'].map((f) => consist(f, 190).join(','));
+  assert.equal(new Set(shapes).size, 3);
+});
+
+test('a longer train gets more vehicles, not longer ones', () => {
+  // A coupled 400 m TGV is two units run as one train.
+  const one = consist('tgv', 200);
+  const two = consist('tgv', 400);
+  assert.ok(two.length > one.length);
+  assert.ok(consistLength(two) > consistLength(one) * 1.7);
+});
+
+test('the consist comes out about the length it was asked for', () => {
+  for (const [family, want] of [
+    ['tgv', 200],
+    ['ic', 190],
+    ['ter', 80],
+    ['other', 120],
+  ]) {
+    const got = consistLength(consist(family, want));
+    assert.ok(Math.abs(got - want) < 30, `${family}: ${got.toFixed(0)} m against ${want}`);
   }
 });
 
-test('the whole train is as long as it should be', () => {
-  const track = straight(10);
-  const cars = bodies(trainBody(track, 5, 200, 2.9, 'ter'));
-  const tail = frame(cars[0], track).back;
-  const nose = frame(cars[cars.length - 1], track).front;
-  assert.ok(Math.abs(dist(tail, nose) - 200) < 15, `${dist(tail, nose).toFixed(0)} m`);
+test('a very long train is still capped, so it does not become hatching', () => {
+  assert.ok(consist('tgv', 5000, 12).length <= 12);
 });
 
-test('the body is as wide as a rail vehicle', () => {
-  // Measured on a middle car: the first is rounded off at the back and the
-  // last tapers to a nose, so neither is full width at its end.
-  const track = straight(10);
-  const cars = bodies(trainBody(track, 5, 200, 2.9, 'ter'));
-  const f = frame(cars[2], track);
-  const across = area(cars[2]) / f.length;
-  assert.ok(Math.abs(across - 2.9) < 0.3, `${across.toFixed(2)} m across`);
+// ----------------------------------------------------------- the placement ---
+
+test('the vehicles are laid end to end from the nose backwards', () => {
+  const cars = trainCars(straight(10), 5, 200, 'tgv', 'inoui').features;
+  assert.ok(cars.length >= 3);
+  // Consecutive centres sit half of each vehicle apart: they touch, with no
+  // gap to read as a break in the train and no overlap to double the roof.
+  for (let i = 0; i < cars.length - 1; i++) {
+    const want = (VEHICLE_M[cars[i].properties.role] + VEHICLE_M[cars[i + 1].properties.role]) / 2;
+    const got = dist(at(cars[i]), at(cars[i + 1]));
+    assert.ok(Math.abs(got - want) < 1, `${got.toFixed(1)} m apart, expected ${want.toFixed(1)}`);
+  }
 });
 
-test('on a curve the cars turn with the track', () => {
-  // This is the whole reason the train is geometry and not an icon.
+test('the leading vehicle is at the front, and it is the only one flagged', () => {
+  const cars = trainCars(straight(10), 5, 200, 'tgv', 'inoui').features;
+  const lead = cars.filter((f) => f.properties.lead === 1);
+  assert.equal(lead.length, 1);
+  // North-running track, so the front is the northernmost.
+  assert.equal(at(lead[0])[1], Math.max(...cars.map((f) => at(f)[1])));
+});
+
+test('the whole train is about as long as it should be', () => {
+  const cars = trainCars(straight(10), 5, 200, 'tgv', 'inoui').features;
+  const ys = cars.map((f) => at(f)[1]);
+  const ends = Math.max(...ys) - Math.min(...ys) + VEHICLE_M.power;
+  assert.ok(Math.abs(ends - 200) < 25, `${ends.toFixed(0)} m`);
+});
+
+test('on a curve the vehicles turn with the track', () => {
+  // This is the whole reason the train is placed vehicle by vehicle.
   const track = curve(0.6);
-  const cars = bodies(trainBody(track, Math.min(track.length, 1.0), 200, 2.9, 'ter'));
-  const swept = Math.abs(frame(cars[0], track).deg - frame(cars[cars.length - 1], track).deg);
+  const cars = trainCars(track, Math.min(track.length, 1.0), 200, 'ter', 'ter').features;
+  const swept = Math.abs(
+    cars[cars.length - 1].properties.bearing - cars[0].properties.bearing,
+  );
   // 200 m of train on a 600 m radius sweeps about 19°.
   assert.ok(swept > 10 && swept < 30, `swept ${swept.toFixed(1)}°`);
 });
 
-test('no car strays from the rails on a curve', () => {
-  // A single rigid rectangle over this arc would stand about 8 m off the
-  // centreline at its ends — more than a track's width from where it belongs.
+test('no vehicle strays from the rails on a curve', () => {
+  // A single rigid image over this arc would stand about 8 m off at its ends.
   const track = curve(0.6);
   let worst = 0;
-  for (const f of bodies(trainBody(track, 1.0, 200, 2.9, 'ter'))) {
-    for (const [lon, lat] of f.geometry.coordinates[0].slice(0, -1)) {
-      const on = track.at(track.distanceAt(lat, lon));
-      worst = Math.max(worst, dist(xy([lon, lat]), xy([on.lon, on.lat])));
-    }
+  for (const f of trainCars(track, 1.0, 200, 'ter', 'ter').features) {
+    const [lon, lat] = f.geometry.coordinates;
+    const on = track.at(track.distanceAt(lat, lon));
+    worst = Math.max(worst, dist(at(f), xy([on.lon, on.lat])));
   }
-  assert.ok(worst < 3, `worst corner ${worst.toFixed(2)} m off the line`);
+  assert.ok(worst < 1, `worst centre ${worst.toFixed(2)} m off the line`);
 });
 
-test('a high-speed set gets a longer nose than a regional one', () => {
-  // Compared as area against a plain car of the same train: a longer taper
-  // takes away more of the rectangle.
-  const kept = (family) => {
-    const cars = bodies(trainBody(straight(10), 5, 200, 2.9, family));
-    return area(cars[cars.length - 1]) / area(cars[2]);
-  };
-  assert.ok(kept('tgv') < kept('ter'), `tgv ${kept('tgv').toFixed(2)} vs ter ${kept('ter').toFixed(2)}`);
-  // At the width it is actually drawn — inflated for legibility — the nose
-  // runs to the cap of half a car and takes a real bite out of it.
-  const drawn = bodies(trainBody(straight(10), 5, 200, 26, 'tgv'));
-  assert.ok(
-    area(drawn[drawn.length - 1]) / area(drawn[2]) < 0.92,
-    'the nose should be visibly tapered at the drawn width',
-  );
+test('the artwork is drawn nose-right, so the bearing is offset a quarter turn', () => {
+  // Due north track: the drawing has to be turned to point up the page.
+  for (const f of trainCars(straight(10), 5, 200, 'tgv', 'inoui').features) {
+    assert.ok(Math.abs(f.properties.bearing + 90) < 1, 'north is -90 to the art');
+  }
 });
 
-test('the nose comes to a point and the tail does not', () => {
-  // A train has one sharp end. Two would look like a mistake.
-  const track = straight(10);
-  const cars = bodies(trainBody(track, 5, 200, 2.9, 'tgv'));
-  // Width at the very end, from how many corners sit there.
-  const endWidth = (f, t) => {
-    const pts = corners(f);
-    const { centre, dir } = axis(pts);
-    const proj = pts.map((p) => (p[0] - centre[0]) * dir[0] + (p[1] - centre[1]) * dir[1]);
-    const g = pts.filter((_, i) => Math.abs(proj[i] - t) < 0.6);
-    return g.length > 1 ? dist(g[0], g[g.length - 1]) : 0;
-  };
-  const p = axis(corners(cars[cars.length - 1]));
-  const projN = corners(cars[cars.length - 1]).map(
-    (q) => (q[0] - p.centre[0]) * p.dir[0] + (q[1] - p.centre[1]) * p.dir[1],
-  );
-  assert.ok(endWidth(cars[cars.length - 1], Math.max(...projN)) < 0.6, 'the nose is a point');
-  const q = axis(corners(cars[0]));
-  const projT = corners(cars[0]).map(
-    (r) => (r[0] - q.centre[0]) * q.dir[0] + (r[1] - q.centre[1]) * q.dir[1],
-  );
-  assert.ok(endWidth(cars[0], Math.min(...projT)) > 1.2, 'the tail is rounded, not pointed');
-});
-
-test('only the leading car is flagged as such', () => {
-  const cars = bodies(trainBody(straight(10), 5, 200, 2.9, 'tgv'));
-  assert.equal(cars.filter((f) => f.properties.lead === 1).length, 1);
-  assert.equal(cars[cars.length - 1].properties.lead, 1);
+test('each vehicle asks for the drawing of its own kind and livery', () => {
+  for (const f of trainCars(straight(10), 5, 190, 'ic', 'ic').features) {
+    assert.equal(f.properties.icon, `${f.properties.role}|ic`);
+  }
+  const ouigo = trainCars(straight(10), 5, 200, 'tgv', 'ouigo').features;
+  assert.ok(ouigo.every((f) => f.properties.icon.endsWith('|ouigo')));
 });
 
 test('a train just starting out is not drawn off the end of its route', () => {
-  // 50 m into the journey, a 200 m train has no route behind it to lie on.
-  for (const f of trainBody(straight(10), 0.05, 200, 2.9, 'ter').features) {
-    for (const [, lat] of f.geometry.coordinates[0]) {
-      assert.ok(lat >= LAT0 - 1e-6, 'nothing behind the start of the line');
-    }
-  }
+  // 50 m into the journey there is no route behind it to stand on, so only
+  // what fits is drawn rather than vehicles pointing in invented directions.
+  const cars = trainCars(straight(10), 0.05, 200, 'tgv', 'inoui').features;
+  for (const f of cars) assert.ok(at(f)[1] >= -1, 'nothing behind the start of the line');
+  assert.ok(cars.length < consist('tgv', 200).length, 'the rest is left off');
 });
 
 test('a train at the very start of the route draws nothing rather than nonsense', () => {
-  assert.equal(trainBody(straight(10), 0, 200, 2.9, 'ter').features.length, 0);
+  assert.equal(trainCars(straight(10), 0, 200, 'tgv', 'inoui').features.length, 0);
 });
 
-test('the polygons are closed rings', () => {
-  for (const f of trainBody(straight(10), 5, 200, 2.9, 'tgv').features) {
-    const ring = f.geometry.coordinates[0];
-    assert.deepEqual(ring[0], ring[ring.length - 1]);
+// ------------------------------------------------------------- the artwork ---
+
+test('every vehicle has a drawing', async () => {
+  const files = (await readdir(ART_DIR)).filter((f) => f.endsWith('.svg'));
+  assert.equal(files.length, Object.keys(VEHICLE_M).length, `drawings: ${files.join(', ')}`);
+  for (const name of Object.values(ART_FILE)) {
+    assert.ok(files.includes(`${name}.svg`), `${name}.svg is missing`);
   }
 });
 
-test('a coupled 400 m set is drawn twice as long as one unit', () => {
-  const track = straight(10);
-  assert.ok(bodies(trainBody(track, 5, 400, 2.9, 'tgv')).length > bodies(trainBody(track, 5, 200, 2.9, 'tgv')).length);
-});
-
-test('the cars touch, so the train is not a dashed line', () => {
-  // They used to be separated by a fraction of a car length. At the width the
-  // body is actually drawn that gap was wider than the body, and the train
-  // read as a row of dashes.
-  const track = straight(10);
-  const cars = bodies(trainBody(track, 5, 200, 2.9, 'ter'));
-  for (let i = 0; i < cars.length - 1; i++) {
-    const gap = dist(frame(cars[i], track).front, frame(cars[i + 1], track).back);
-    assert.ok(gap < 0.5, `gap of ${gap.toFixed(2)} m at coupling ${i}`);
+test('the lengths here match the artwork they are drawn from', async () => {
+  // The viewBox is in decimetres, so a 26.4 m coach is 264 units. Two copies
+  // of the same number is exactly the kind of thing that drifts apart.
+  for (const [role, name] of Object.entries(ART_FILE)) {
+    const svg = await readFile(path.join(ART_DIR, `${name}.svg`), 'utf8');
+    const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg);
+    assert.ok(m, `${name}.svg has no viewBox`);
+    assert.equal(Number(m[1]) / 10, VEHICLE_M[role], `${name}.svg length`);
+    assert.equal(Number(m[2]) / 10, 2.9, `${name}.svg should be a vehicle's real width`);
   }
 });
 
-test('the divisions can be capped when there are few pixels to draw them in', () => {
-  // Far out a 400 m train would be chopped into 17 cars across 60 pixels,
-  // which is hatching, not a train.
-  assert.equal(carCount(400, 3), 3);
-  assert.equal(carCount(400, 99), 17);
-  assert.ok(carCount(400, 0) >= 2, 'never fewer than two');
-  assert.equal(bodies(trainBody(straight(10), 5, 400, 2.9, 'tgv', 4)).length, 4);
-});
-
-test('a wider body is still centred on the track', () => {
-  // The width is inflated for legibility at low zoom; that must widen the
-  // train about the centreline, not push it to one side of the rails.
-  const track = straight(10);
-  for (const f of bodies(trainBody(track, 5, 200, 26, 'ter'))) {
-    const back = frame(f, track).back;
-    // Back to lon/lat to ask the track where that is.
-    const lon = LON0 + back[0] / (KM_PER_DEG * 1000 * COS);
-    const lat = LAT0 + back[1] / (KM_PER_DEG * 1000);
-    const on = track.at(track.distanceAt(lat, lon));
-    assert.ok(dist(back, xy([on.lon, on.lat])) < 0.6, 'back edge centred on the line');
+test('every drawing takes the livery colours', async () => {
+  // Untinted artwork renders with the placeholder text as a colour, which
+  // browsers treat as black — a train-shaped hole in the map.
+  for (const name of Object.values(ART_FILE)) {
+    const svg = await readFile(path.join(ART_DIR, `${name}.svg`), 'utf8');
+    assert.ok(svg.includes('{{band}}'), `${name}: no flank colour`);
+    assert.ok(svg.includes('{{body}}'), `${name}: no roof colour`);
   }
 });
 
-// ---------------------------------------------------------- the plan view ---
-
-test('it is drawn as a plan view, not as a silhouette', () => {
-  // From above a train is mostly roof, with things standing on it. A body
-  // with nothing on it is the row-of-boxes drawing this replaced.
-  const geo = trainBody(straight(10), 5, 200, 2.9, 'tgv');
-  assert.ok(parts(geo, 'roof').length >= 4, 'a roof panel per car');
-  assert.ok(parts(geo, 'panto').length >= 1, 'a pantograph');
-  assert.equal(parts(geo, 'glass').length, 1, 'one windscreen, at the front');
-  assert.ok(parts(geo, 'gangway').length >= 1, 'gangways between the cars');
-});
-
-test('the roof sits inside the body, so the livery shows around it', () => {
-  const geo = trainBody(straight(10), 5, 200, 2.9, 'ter');
-  const car = bodies(geo)[2];
-  const roof = parts(geo, 'roof')[2];
-  assert.ok(area(roof) < area(car) * 0.7, 'the roof is inset');
-  assert.ok(area(roof) > area(car) * 0.2, 'but it is the dominant surface');
-});
-
-test('a high-speed set is powered at both ends, a regional unit once', () => {
-  // Two power cars is what a TGV is.
-  assert.equal(parts(trainBody(straight(10), 5, 200, 2.9, 'tgv'), 'panto').length, 2);
-  assert.equal(parts(trainBody(straight(10), 5, 200, 2.9, 'ter'), 'panto').length, 1);
-});
-
-test('the windscreen is at the sharp end', () => {
-  const geo = trainBody(straight(10), 5, 200, 2.9, 'tgv');
-  const cars = bodies(geo);
-  const glass = parts(geo, 'glass')[0];
-  assert.equal(glass.properties.lead, 1, 'on the leading car');
-  const track = straight(10);
-  const nose = frame(cars[cars.length - 1], track).front;
-  const tail = frame(cars[0], track).back;
-  const g = frame(glass, track).front;
-  assert.ok(dist(g, nose) < dist(g, tail), 'nearer the nose than the tail');
-});
-
-test('every piece is tagged, so the map can style it', () => {
-  const known = new Set(['body', 'roof', 'glass', 'panto', 'kit', 'gangway']);
-  for (const f of trainBody(straight(10), 5, 200, 2.9, 'tgv').features) {
-    assert.ok(known.has(f.properties.part), `unknown part ${f.properties.part}`);
-    assert.ok(f.properties.family, 'and knows what kind of train it belongs to');
+test('the drawings are self-contained SVG that a browser can rasterise', async () => {
+  for (const name of Object.values(ART_FILE)) {
+    const svg = await readFile(path.join(ART_DIR, `${name}.svg`), 'utf8');
+    assert.equal([...svg.matchAll(/<svg[\s>]/g)].length, 1, `${name}: one root element`);
+    assert.match(svg, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/, `${name}: needs a namespace`);
+    // No external references: the image is loaded from a data URL, which
+    // cannot fetch anything.
+    assert.ok(!/xlink:href|<image|url\(http/.test(svg), `${name}: refers to something external`);
   }
 });
 
-test('a car is never drawn as a square', () => {
-  // The width is inflated at low zoom, and a 200 m train cut into eight cars
-  // is 25 m each — against a body drawn 30 m wide. That is a row of squares,
-  // which is the one thing a plan view must not look like, so the train is
-  // divided into fewer and longer cars instead.
-  const track = straight(10);
-  for (const width of [3, 12, 26, 40]) {
-    for (const f of bodies(trainBody(track, 5, 200, width, 'ter'))) {
-      const long = frame(f, track).length;
-      assert.ok(long > width * 1.2, `car ${long.toFixed(0)} m long by ${width} m wide`);
-    }
+test('the cab drawings face the way the code expects', async () => {
+  // Nose-right is the convention the bearing offset relies on. The nose is
+  // where the windscreen is, so it should be in the right-hand half.
+  for (const name of ['power-car', 'loco', 'emu-cab']) {
+    const svg = await readFile(path.join(ART_DIR, `${name}.svg`), 'utf8');
+    const width = Number(/viewBox="0 0 ([\d.]+)/.exec(svg)[1]);
+    const glass = /<path d="M([\d.]+)[^"]*"\s+fill="#16202c"/.exec(svg);
+    assert.ok(glass, `${name}: no windscreen found`);
+    assert.ok(Number(glass[1]) > width / 2, `${name}: the cab should be at the right-hand end`);
   }
 });

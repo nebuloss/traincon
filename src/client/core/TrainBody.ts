@@ -1,250 +1,119 @@
 /**
- * The train as ground geometry: the vehicle from directly above, on its track.
+ * Where each vehicle of a train sits on the track.
  *
- * A marker is a single point with a single angle, which is fine for a dot but
- * wrong once the train is drawn at its real length. A 200 m TGV on the curve
- * into a station spans a noticeable arc — drawn as one rigid rectangle it
- * leaves the rails at both ends. Real cars are rigid but the couplings are
- * not, so a train on a curve is a chain of straight bodies, each at its own
- * angle. That is what this builds, and it is why the drawing is geometry
- * rather than an icon: an icon cannot bend.
+ * The train is drawn from artwork — one SVG per kind of vehicle, in
+ * `assets/train`, loaded by `TrainArt` — and this works out which vehicles a
+ * train is made of and where to put each one. A vehicle is rigid, so it gets
+ * a point and an angle; the couplings are not, so the angles differ down the
+ * train and the whole thing bends round a curve the way the real one does.
  *
- * Within that constraint it is drawn as a plan view rather than as a row of
- * boxes, because from above a train is mostly roof. So each car is a roof
- * panel inset within the livery, with the equipment that sits on it: air
- * conditioning blocks, and pantographs on the powered cars. The leading car
- * has an elliptical nose with the windscreen behind it, the rear of the train
- * is rounded off, and the gangways between cars are drawn as the narrow dark
- * bands they are from overhead.
+ * That is why the train is not one icon. A 200 m set on the curve into a
+ * station spans a noticeable arc, and a single rigid image laid over it
+ * stands about 8 m off the rails at each end — the sagitta of a 200 m chord
+ * on a 600 m radius. Per vehicle, the worst error is a fraction of that.
  *
- * The parts come out as separate features tagged with `part`, and the map
- * styles each one — see MapView.addTrainBody.
+ * The three families are put together differently, and from above the
+ * difference is the obvious thing about them:
  *
- * Every detail is sized as a fraction of the drawn width, not in real metres.
- * The width is inflated at low zoom so the train does not vanish to a hairline
- * (a rail vehicle is 2.9 m across against 200 m long), and details measured in
- * true metres would disappear while the body around them stayed visible.
+ *   tgv   a motrice at each end, articulated remorques between. Both ends are
+ *         noses, which is why a TGV looks the same coming or going.
+ *   ic    a locomotive on the front and a rake of Corail coaches behind it —
+ *         the loco shorter than what it hauls, and blunt where a TGV points.
+ *   ter   a multiple unit: a cab car at each end, plain cars between, and no
+ *         separate locomotive at all.
+ *
+ * Lengths here are the real ones, and `test/trainbody` checks them against
+ * the artwork's own viewBox so the two cannot drift apart.
  */
 
 import { Track } from './Track.ts';
-import type { Family, PolygonGeom, TrainBodyGeo, TrainPart } from '../../shared/types.ts';
-import type { Feature } from '../../shared/types.ts';
+import type { Family, TrainCarsGeo, VehicleRole } from '../../shared/types.ts';
 
-/** Nominal car length, metres — between a TGV Duplex car and a Corail coach. */
-const CAR_M = 24;
+/** Real length of each vehicle, metres. */
+export const VEHICLE_M: Readonly<Record<VehicleRole, number>> = {
+  power: 22.1,
+  artic: 18.7,
+  loco: 17.5,
+  coach: 26.4,
+  'emu-cab': 27,
+  'emu-mid': 27,
+};
 
-/** Metres of latitude per degree; near enough over a train's length. */
-const M_PER_DEG = 111_320;
+/**
+ * What a train of this length and family is made of, back to front.
+ *
+ * The count falls out of the length rather than the other way round, so a
+ * 400 m coupled TGV gets twice the remorques of a 200 m one — which is what
+ * you see beside a platform built for it.
+ */
+export function consist(family: Family, lengthM: number, maxCars = 24): VehicleRole[] {
+  const ends: VehicleRole[] = family === 'tgv' ? ['power', 'power'] : family === 'ic' ? [] : ['emu-cab', 'emu-cab'];
+  const middle: VehicleRole = family === 'tgv' ? 'artic' : family === 'ic' ? 'coach' : 'emu-mid';
+  // Only a hauled train has a vehicle that is not part of the rake.
+  const lead: VehicleRole | null = family === 'ic' ? 'loco' : null;
 
-/** Points used to draw each curved end. Five is smooth at any zoom this shows at. */
-const CURVE_STEPS = 5;
+  const fixed = ends.reduce((a, r) => a + VEHICLE_M[r], 0) + (lead ? VEHICLE_M[lead] : 0);
+  const room = Math.max(0, lengthM - fixed);
+  const budget = Math.max(1, maxCars - ends.length - (lead ? 1 : 0));
+  const n = Math.max(1, Math.min(budget, Math.round(room / VEHICLE_M[middle])));
+  const rake: VehicleRole[] = new Array(n).fill(middle);
 
-export interface Corner {
-  lat: number;
-  lon: number;
+  if (lead) return [...rake, lead];
+  return [ends[0]!, ...rake, ends[1]!];
 }
 
-/** Shift a point by a distance in metres along a bearing. */
-function offset(lat: number, lon: number, bearing: number, metres: number): Corner {
-  const rad = (bearing * Math.PI) / 180;
-  const dLat = (metres * Math.cos(rad)) / M_PER_DEG;
-  const dLon = (metres * Math.sin(rad)) / (M_PER_DEG * Math.cos((lat * Math.PI) / 180));
-  return { lat: lat + dLat, lon: lon + dLon };
+/** How long that consist really is, metres. */
+export function consistLength(roles: readonly VehicleRole[]): number {
+  return roles.reduce((a, r) => a + VEHICLE_M[r], 0);
 }
 
 /**
- * How many cars to draw for a train of this length.
+ * Every vehicle placed on the track, nose at `noseKm`.
  *
- * Capped: past a couple of dozen the divisions are closer together than the
- * body is wide and it reads as hatching rather than as a train.
- */
-export function carCount(lengthM: number, max = 24): number {
-  return Math.max(2, Math.min(24, Math.max(2, max), Math.round(lengthM / CAR_M)));
-}
-
-/**
- * A shape laid along the track between two points, `half(x)` wide at each
- * station along it.
+ * Each comes out as a point carrying the angle its own two ends make — the
+ * chord, which is where a rigid vehicle actually sits between two curved
+ * rails.
  *
- * The flanks take their direction from the piece's own two ends rather than
- * from the track's bearing at each point, so a car sits on the chord — which
- * is where a rigid vehicle actually sits between two curved rails.
+ * Laid out from the nose backwards, because that is the end whose position
+ * the model knows. Vehicles that would fall off the start of the route are
+ * dropped rather than drawn pointing in an invented direction.
  */
-function shape(
-  track: Track,
-  backKm: number,
-  frontKm: number,
-  xs: readonly number[],
-  half: (x: number) => number,
-): Corner[] | null {
-  const back = track.at(backKm);
-  const front = track.at(frontKm);
-  if (!back || !front) return null;
-  if (frontKm <= backKm) return null;
-
-  const axis = Track.bearing(back.lat, back.lon, front.lat, front.lon);
-
-  const left: Corner[] = [];
-  const right: Corner[] = [];
-  for (const x of xs) {
-    const p = track.at(backKm + x / 1000);
-    if (!p) continue;
-    const w = half(x);
-    if (w <= 0.01) {
-      // A point: the nose tip. One corner, not two.
-      left.push({ lat: p.lat, lon: p.lon });
-      continue;
-    }
-    left.push(offset(p.lat, p.lon, axis - 90, w));
-    right.push(offset(p.lat, p.lon, axis + 90, w));
-  }
-  if (left.length + right.length < 3) return null;
-  return [...left, ...right.reverse()];
-}
-
-/** Stations along a piece, with extra detail wherever it curves. */
-function stations(spanM: number, noseM: number, tailM: number): number[] {
-  const xs = new Set<number>([0, spanM]);
-  for (let i = 1; i <= CURVE_STEPS; i++) {
-    if (tailM > 0) xs.add((tailM * i) / CURVE_STEPS);
-    if (noseM > 0) xs.add(spanM - noseM + (noseM * i) / CURVE_STEPS);
-  }
-  if (tailM > 0) xs.add(tailM);
-  if (noseM > 0) xs.add(spanM - noseM);
-  return [...xs].filter((x) => x >= 0 && x <= spanM).sort((a, b) => a - b);
-}
-
-/**
- * The half-width profile of one car.
- *
- * Both ends are quarter ellipses: the nose comes to a point, while the tail is
- * cut short of one so it rounds off like a rear cab rather than tapering to a
- * second sharp end.
- */
-function profile(spanM: number, halfW: number, noseM: number, tailM: number) {
-  return (x: number): number => {
-    if (noseM > 0 && x > spanM - noseM) {
-      const t = Math.min(1, (x - (spanM - noseM)) / noseM);
-      return halfW * Math.sqrt(Math.max(0, 1 - t * t));
-    }
-    if (tailM > 0 && x < tailM) {
-      const t = Math.min(1, (tailM - x) / tailM);
-      return halfW * Math.sqrt(Math.max(0, 1 - (0.78 * t) ** 2));
-    }
-    return halfW;
-  };
-}
-
-/** A plain rectangle along the track — roofs, windscreens, roof equipment. */
-function slab(track: Track, backKm: number, frontKm: number, halfW: number): Corner[] | null {
-  return shape(track, backKm, frontKm, [0, (frontKm - backKm) * 1000], () => halfW);
-}
-
-function feature(ring: Corner[], part: TrainPart, lead: 0 | 1, family: Family) {
-  return {
-    type: 'Feature' as const,
-    properties: { part, lead, family },
-    geometry: {
-      type: 'Polygon' as const,
-      coordinates: [
-        [
-          ...ring.map((c): [number, number] => [c.lon, c.lat]),
-          [ring[0]!.lon, ring[0]!.lat] as [number, number],
-        ],
-      ],
-    },
-  };
-}
-
-/**
- * The whole train, nose at `noseKm`, as GeoJSON ready for a MapLibre source.
- *
- * The train is clipped to the route: near the start of a journey the tail
- * would hang off the end of the drawn line, and a body drawn there would be
- * pointing in an invented direction.
- */
-export function trainBody(
+export function trainCars(
   track: Track,
   noseKm: number,
   lengthM: number,
-  widthM: number,
   family: Family,
+  livery: string,
   maxCars = 24,
-): TrainBodyGeo {
-  const halfW = widthM / 2;
-  const tailKm = Math.max(0, noseKm - lengthM / 1000);
+): TrainCarsGeo {
+  const features: TrainCarsGeo['features'] = [];
   const nose = Math.min(track.length, noseKm);
-  const span = nose - tailKm;
+  if (nose <= 0) return { type: 'FeatureCollection', features };
 
-  const features: Feature<PolygonGeom, { part: TrainPart; lead: 0 | 1; family: Family }>[] = [];
-  if (span <= 0) return { type: 'FeatureCollection', features };
+  const roles = consist(family, lengthM, maxCars);
+  let front = nose;
 
-  // A car shorter than the body is wide draws as a square, which is the one
-  // thing this is not meant to look like. The width is inflated at low zoom,
-  // so that is reachable: 200 m in eight cars is 25 m each, against a body
-  // drawn 30 m wide. Divide into fewer, longer cars instead.
-  const roomy = Math.floor((span * 1000) / (widthM * 1.6));
-  const n = carCount(span * 1000, Math.min(maxCars, roomy));
-  const carKm = span / n;
-  const carM = carKm * 1000;
-  const push = (ring: Corner[] | null, part: TrainPart, lead: 0 | 1) => {
-    if (ring) features.push(feature(ring, part, lead, family));
-  };
+  for (let i = roles.length - 1; i >= 0; i--) {
+    const role = roles[i]!;
+    const back = front - VEHICLE_M[role] / 1000;
+    if (back < 0) break;
 
-  // Proportional to the drawn width, so the detail survives the width being
-  // inflated for legibility at low zoom.
-  const noseM = Math.min(family === 'tgv' ? widthM * 2.4 : widthM * 0.8, carM * 0.5);
-  const tailM = Math.min(widthM * 0.7, carM * 0.35);
+    const a = track.at(back);
+    const b = track.at(front);
+    if (!a || !b) break;
 
-  for (let i = 0; i < n; i++) {
-    // The cars touch. An earlier version left a gap at each coupling, which at
-    // this width read as a dashed line rather than as a train; the gangway
-    // band below shows the division without breaking the body up.
-    const back = tailKm + carKm * i;
-    const front = tailKm + carKm * (i + 1);
-    const lead = i === n - 1 ? (1 as const) : (0 as const);
-    const myNose = lead ? noseM : 0;
-    const myTail = i === 0 ? tailM : 0;
-    const m = (x: number) => back + x / 1000;
-
-    push(
-      shape(track, back, front, stations(carM, myNose, myTail), profile(carM, halfW, myNose, myTail)),
-      'body',
-      lead,
-    );
-
-    // The roof panel: the surface you actually see from above, inset so the
-    // livery shows as a border down both sides.
-    const roofBack = Math.max(myTail, widthM * 0.3);
-    const roofFront = carM - Math.max(myNose, widthM * 0.3);
-    if (roofFront > roofBack) push(slab(track, m(roofBack), m(roofFront), halfW * 0.56), 'roof', lead);
-
-    // The gangway to the next car — a narrow dark band across the join.
-    if (i < n - 1) {
-      push(slab(track, m(carM - widthM * 0.16), m(carM + widthM * 0.16), halfW * 0.44), 'gangway', lead);
-    }
-
-    // A windscreen behind the nose, which is what says which way it faces.
-    if (lead) push(slab(track, m(carM - noseM * 0.95), m(carM - noseM * 0.3), halfW * 0.6), 'glass', lead);
-
-    // Pantographs on the powered cars — on a high-speed set that is the two
-    // ends, otherwise one somewhere in the middle. From above a pantograph is
-    // a bar lying across the roof, which is how it is drawn.
-    const powered = family === 'tgv' ? lead === 1 || i === 0 : i === Math.floor(n / 2);
-    if (powered && roofFront > roofBack) {
-      const at = lead ? roofBack + (roofFront - roofBack) * 0.2 : roofBack + (roofFront - roofBack) * 0.62;
-      push(slab(track, m(at), m(at + widthM * 0.32), halfW * 0.86), 'panto', lead);
-    }
-
-    // Roof kit — the air conditioning and electrical blocks that break up the
-    // roofline. Two per car, small, and only where there is room to see them.
-    if (roofFront - roofBack > widthM * 1.6) {
-      for (const f of [0.34, 0.72]) {
-        if (powered && Math.abs(f - 0.62) < 0.2) continue;
-        const at = roofBack + (roofFront - roofBack) * f;
-        push(slab(track, m(at), m(at + widthM * 0.22), halfW * 0.34), 'kit', lead);
-      }
-    }
+    features.push({
+      type: 'Feature',
+      properties: {
+        icon: `${role}|${livery}`,
+        role,
+        // The artwork is drawn nose-right, so east is its zero.
+        bearing: Track.bearing(a.lat, a.lon, b.lat, b.lon) - 90,
+        lead: i === roles.length - 1 ? 1 : 0,
+      },
+      geometry: { type: 'Point', coordinates: [(a.lon + b.lon) / 2, (a.lat + b.lat) / 2] },
+    });
+    front = back;
   }
 
   return { type: 'FeatureCollection', features };

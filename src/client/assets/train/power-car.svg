@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 221 29">
+  <!-- TGV motrice, 22.1 m, nose to the right. The nose is the long quarter
+       ellipse that makes a high-speed set recognisable at a glance. -->
+  <path d="M3 0 H150 Q221 0 221 14.5 Q221 29 150 29 H3 Q0 29 0 26 V3 Q0 0 3 0 Z" fill="{{band}}"/>
+  <path d="M9 4.5 H150 Q206 4.5 206 14.5 Q206 24.5 150 24.5 H9 Q5 24.5 5 21.5 V7.5 Q5 4.5 9 4.5 Z" fill="{{body}}"/>
+  <rect x="5" y="13.7" width="180" height="1.6" fill="#8d99a8" opacity=".5"/>
+  <!-- Windscreen, wrapped round the nose. -->
+  <path d="M188 7 Q207 9.5 210 14.5 Q207 19.5 188 22 Z" fill="#16202c" opacity=".85"/>
+  <!-- Pantograph, across the roof at the inner end. -->
+  <rect x="34" y="3" width="11" height="23" rx="1.5" fill="#2b3440"/>
+  <rect x="36.5" y="3" width="6" height="23" fill="#7c8896" opacity=".8"/>
+  <!-- Transformer and cooling blocks. -->
+  <rect x="60" y="8.5" width="34" height="12" rx="2" fill="#b7c1cd"/>
+  <rect x="104" y="9.5" width="22" height="10" rx="2" fill="#98a4b2"/>
+  <!-- Coupling end. -->
+  <rect x="0" y="9" width="4" height="11" rx="1.5" fill="#101720" opacity=".6"/>
+</svg>
