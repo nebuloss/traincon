@@ -267,3 +267,101 @@ test('an ordinary follower is still held when a coupled set is nearby', () => {
   assert.ok(t.get('9999').pushedM > 0, 'a real follower must still be held');
   assert.ok(['12177', '5537'].includes(t.get('9999').ahead));
 });
+
+
+// ── single track ─────────────────────────────────────────────────────────────
+
+const SINGLE = () => ({ single: true, tracks: 1 });
+const DOUBLE = () => ({ single: false, tracks: 2 });
+
+/** Same as `running`, but pointed the other way. */
+function facing(number, line, km, progress) {
+  return running(number, line, km, progress, 180);
+}
+
+test('on single track, trains meeting head-on constrain each other', () => {
+  // Neither is "ahead" of the other in any useful sense — they simply cannot
+  // both continue.
+  const t = analyseTraffic(
+    [running('8540', 'L1', 0, 0.4), facing('9001', 'L1', 1.5, 0.5)],
+    twoKm,
+    undefined,
+    SINGLE,
+  );
+  assert.equal(t.get('8540').aspect, 'semaphore');
+  assert.equal(t.get('8540').opposing, true);
+  assert.equal(t.get('8540').ahead, '9001');
+  assert.equal(t.get('9001').opposing, true, 'both are constrained, not just one');
+});
+
+test('on double track, the same pair is ignored', () => {
+  // Two tracks, one each way: they pass, which is the whole point of two.
+  const t = analyseTraffic(
+    [running('8540', 'L1', 0, 0.4), facing('9001', 'L1', 1.5, 0.5)],
+    twoKm,
+    undefined,
+    DOUBLE,
+  );
+  assert.equal(t.get('8540').opposing, undefined);
+  assert.equal(t.get('8540').pushedM, undefined);
+});
+
+test('neither opposing train is moved, because which one waits is unknowable', () => {
+  // One of them is standing in a passing loop. The timetable does not say
+  // which, and inventing an answer would put a train where it is not.
+  const t = analyseTraffic(
+    [running('8540', 'L1', 0, 0.4), facing('9001', 'L1', 1, 0.5)],
+    twoKm,
+    undefined,
+    SINGLE,
+  );
+  assert.equal(t.get('8540').pushedM, undefined);
+  assert.equal(t.get('9001').pushedM, undefined);
+});
+
+test('an opposing train slows for the meeting point', () => {
+  const t = analyseTraffic(
+    [running('8540', 'L1', 0, 0.4), facing('9001', 'L1', 0.6, 0.5)],
+    twoKm,
+    undefined,
+    SINGLE,
+  );
+  const a = t.get('8540');
+  assert.ok(a.allowedKmh < 160, `allowed ${a.allowedKmh} of 160`);
+  assert.ok(a.allowedKmh >= 0);
+});
+
+test('a distant opposing train on single track is not a constraint', () => {
+  // Twenty kilometres apart with two-kilometre blocks: there is a loop between
+  // them, and treating that as a conflict would freeze half the network.
+  const t = analyseTraffic(
+    [running('8540', 'L1', 0, 0.4), facing('9001', 'L1', 20, 0.5)],
+    twoKm,
+    undefined,
+    SINGLE,
+  );
+  assert.equal(t.get('8540').opposing, undefined);
+});
+
+test('following still works on single track', () => {
+  // Same direction, single track: the ordinary following rule applies.
+  const t = analyseTraffic(
+    [running('8540', 'L1', 0, 0.4), running('8542', 'L1', 0.8, 0.5)],
+    twoKm,
+    undefined,
+    SINGLE,
+  );
+  assert.equal(t.get('8540').ahead, '8542');
+  assert.ok(t.get('8540').pushedM > 0, 'a follower is still held back');
+  assert.equal(t.get('8540').opposing, undefined);
+});
+
+test('coupled halves are excluded on single track too', () => {
+  const a = running('12177', 'L1', 0, 0.5);
+  const b = running('5537', 'L1', 0, 0.5);
+  a.coupledWith = ['5537'];
+  b.coupledWith = ['12177'];
+  const t = analyseTraffic([a, b], twoKm, undefined, SINGLE);
+  assert.equal(t.get('12177').opposing, undefined);
+  assert.equal(t.get('12177').pushedM, undefined);
+});

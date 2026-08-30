@@ -242,6 +242,10 @@ async function main() {
             line: attrs.code_ligne != null ? String(attrs.code_ligne) : null,
             pk: attrs.pk ?? null,
             sens: attrs.sens ?? null,
+            // The track this object stands on — V1, V2, VU for voie unique.
+            // Counting the distinct ones over a stretch is how the number of
+            // tracks is known, which decides whether opposing trains conflict.
+            voie: attrs.nom_voie != null ? String(attrs.nom_voie) : null,
           });
         }
       }

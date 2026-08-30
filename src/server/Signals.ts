@@ -36,6 +36,19 @@ export interface Signal {
   type: string;
   /** Infrastructure line code, so signals can be kept to the train's own line. */
   line: string | null;
+  /** Track this stands on: V1, V2, UNIQUE for single track, or a yard name. */
+  voie?: string | null;
+}
+
+/** How many tracks there are at a point, and whether it is single. */
+export interface TrackLayout {
+  /**
+   * Single track — trains in opposite directions cannot pass, so they
+   * constrain each other absolutely rather than only when following.
+   */
+  single: boolean;
+  /** Distinct tracks seen nearby. */
+  tracks: number;
 }
 
 export interface SignalAhead {
@@ -68,15 +81,63 @@ function headingGap(a: number, b: number): number {
 
 export class SignalIndex {
   private readonly cells = new Map<string, Signal[]>();
+  /**
+   * Track names seen in each cell, from *every* object rather than only the
+   * stop signals — a stretch of plain single track carries whistle boards and
+   * speed boards but few carrés, and dropping those would make it look
+   * double-tracked.
+   *
+   * Stored as names per cell rather than per object: a few tens of thousands
+   * of small sets instead of a record for each of 116 000 objects.
+   */
+  private readonly tracks = new Map<string, Set<string>>();
 
   constructor(signals: readonly Signal[]) {
     for (const s of signals) {
-      if (!STOP_TYPES.has(s.type)) continue;
       const key = `${Math.floor(s.lat / CELL)},${Math.floor(s.lon / CELL)}`;
+
+      if (s.voie) {
+        const seen = this.tracks.get(key);
+        if (seen) seen.add(s.voie);
+        else this.tracks.set(key, new Set([s.voie]));
+      }
+
+      if (!STOP_TYPES.has(s.type)) continue;
       const bucket = this.cells.get(key);
       if (bucket) bucket.push(s);
       else this.cells.set(key, [s]);
     }
+  }
+
+  /**
+   * The track layout around a point.
+   *
+   * `UNIQUE` is published explicitly for single track, which is better than
+   * inferring it from a count: a quiet double-track section might carry only
+   * one signal in a cell and look single by accident.
+   *
+   * Yard and platform names (A, B, 3, 4…) are counted but do not make a line
+   * "not single": a passing loop at a station on a single-track line is still
+   * a single-track line either side of it.
+   */
+  tracksNear(lat: number, lon: number): TrackLayout {
+    const ci = Math.floor(lat / CELL);
+    const cj = Math.floor(lon / CELL);
+
+    const seen = new Set<string>();
+    for (let i = ci - 1; i <= ci + 1; i++) {
+      for (let j = cj - 1; j <= cj + 1; j++) {
+        for (const v of this.tracks.get(`${i},${j}`) ?? []) seen.add(v);
+      }
+    }
+
+    if (!seen.size) return { single: false, tracks: 0 };
+
+    const running = [...seen].filter((v) => /^V?\d+(BIS|TER)?$/i.test(v) || v === 'UNIQUE');
+    return {
+      single: seen.has('UNIQUE') && !seen.has('V2'),
+      tracks: running.length || seen.size,
+    };
   }
 
   get size(): number {

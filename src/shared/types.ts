@@ -158,6 +158,8 @@ export interface TrainDTO {
     allowedKmh?: number;
     /** Distance to the next signal that could stop it, metres. */
     signalM?: number;
+    /** The other train is coming the other way on a single track. */
+    opposing?: boolean;
   } | null;
   feedTs: number;
 }

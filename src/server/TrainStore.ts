@@ -566,6 +566,7 @@ export class TrainStore {
       this.signals
         ? (lat, lon, bearing) => this.signals!.nextAhead(lat, lon, bearing)?.distanceM ?? null
         : undefined,
+      this.signals ? (lat, lon) => this.signals!.tracksNear(lat, lon) : undefined,
     );
   }
 

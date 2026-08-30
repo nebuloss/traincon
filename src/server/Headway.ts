@@ -71,6 +71,14 @@ export interface Traffic {
   /** Distance to the next signal that could stop it, when known. */
   signalM?: number;
   /**
+   * The other train is coming the other way on a single track.
+   *
+   * Both are reported, and neither is moved. One of them is waiting in a loop
+   * for the other, and which one is not knowable from the timetable — saying
+   * so is honest, guessing would put a train somewhere it is not.
+   */
+  opposing?: boolean;
+  /**
    * Speed the approach allows, km/h — present only when it is a restriction.
    *
    * Absent means the traffic ahead is not constraining this train, so its own
@@ -161,6 +169,11 @@ export function analyseTraffic(
    * average for that kind of line.
    */
   nextSignalM?: (lat: number, lon: number, bearing: number) => number | null,
+  /**
+   * Track layout at a point. On single track a train is constrained by
+   * everything on the line, not merely by what is in front of it.
+   */
+  layoutAt?: (lat: number, lon: number) => { single: boolean; tracks: number },
 ): Map<string, Traffic> {
   const out = new Map<string, Traffic>();
 
@@ -182,6 +195,43 @@ export function analyseTraffic(
     for (const a of group) {
       const pa = a.position;
       const blockKm = spacingM(pa.lat, pa.lon) / 1000;
+
+      // On single track, a train coming the other way is a harder constraint
+      // than one in front: they cannot pass at all, so one is standing in a
+      // loop. Checked first, because it outranks the following case.
+      const single = layoutAt?.(pa.lat, pa.lon)?.single ?? false;
+      if (single) {
+        let facing: { train: Follower; gapKm: number } | null = null;
+        for (const b of group) {
+          if (a.number === b.number) continue;
+          if (a.coupledWith?.includes(b.number) || b.coupledWith?.includes(a.number)) continue;
+
+          const pb = b.position;
+          if (headingGap(pa.bearing ?? 0, pb.bearing ?? 0) < 180 - SAME_WAY_DEG) continue;
+
+          const gapKm = haversineKm(pa.lat, pa.lon, pb.lat, pb.lon);
+          if (gapKm > NEIGHBOUR_KM) continue;
+          if (!facing || gapKm < facing.gapKm) facing = { train: b, gapKm };
+        }
+
+        if (facing && facing.gapKm < blockKm * 2) {
+          const freeKmh = pa.speedKmh || 0;
+          const t: Traffic = {
+            aspect: 'semaphore',
+            ahead: facing.train.number,
+            gapM: Math.round(facing.gapKm * 1000),
+            opposing: true,
+          };
+          // Brake for the midpoint: whichever of the two is moving must be
+          // able to stop before meeting the other.
+          if (freeKmh > 0) {
+            const allowed = approachSpeed((facing.gapKm / 2) * 1000, freeKmh);
+            if (allowed < freeKmh - 1) t.allowedKmh = Math.round(allowed);
+          }
+          out.set(a.number, t);
+          continue;
+        }
+      }
 
       // Nearest train ahead on the same line, going the same way.
       let nearest: { train: Follower; gapKm: number } | null = null;
