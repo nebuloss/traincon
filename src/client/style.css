@@ -118,6 +118,43 @@ button { touch-action: manipulation; }
 }
 .theme-toggle button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 
+/* ---------- deduced signal aspect ---------- */
+
+/*
+ * The lamp. Small on purpose: it is an inference from where the other trains
+ * are, not a reading off the signal, and it is always shown next to the word
+ * "déduit" so it cannot be taken for a live feed.
+ */
+.lamp {
+  flex: 0 0 auto; width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, .45);
+  box-shadow: inset 0 -2px 4px rgba(0, 0, 0, .35);
+}
+.lamp.green  { background: #23c55e; box-shadow: inset 0 -2px 4px rgba(0,0,0,.35), 0 0 7px #23c55e88; }
+.lamp.yellow { background: #eab308; box-shadow: inset 0 -2px 4px rgba(0,0,0,.35), 0 0 7px #eab30888; }
+.lamp.red    { background: #ef4444; box-shadow: inset 0 -2px 4px rgba(0,0,0,.35), 0 0 7px #ef444488; }
+.lamp.dark   { background: var(--dead); box-shadow: none; }
+
+.ov-signal {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 13px; margin-top: 8px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel-2);
+}
+.ov-signal .lamp { margin-top: 2px; }
+.ov-signal-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+
+/* The honesty label, quiet but always there. */
+.deduced {
+  flex: 0 0 auto; align-self: flex-start;
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 5px;
+  background: color-mix(in srgb, var(--muted) 20%, transparent);
+  color: var(--muted); cursor: help; white-space: nowrap;
+}
+
+.map-aspect { flex: 0 0 auto; display: inline-flex; align-items: center; }
+
 /* ---------- outage / status banner ---------- */
 .banner {
   position: sticky; top: 0; z-index: 25;

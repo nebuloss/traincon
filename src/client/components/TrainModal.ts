@@ -9,6 +9,7 @@
 import { Format, statusSentence } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
 import { Timeline } from './Timeline.ts';
+import { aspectBlock } from './SignalAspect.ts';
 import { starButton } from './TrainCard.ts';
 import { MapView, type MapMode } from './MapView.ts';
 import { missingKind } from '../../shared/missing.ts';
@@ -200,6 +201,7 @@ export class TrainModal {
           ${st.sub ? `<span class="ov-sub">${Format.esc(st.sub)}</span>` : ''}
         </span>
       </div>
+      ${aspectBlock(t)}
       ${TrainModal.focusBlock(t)}
       <div class="ov-grid">
         <div class="ov-cell">

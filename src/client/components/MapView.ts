@@ -11,6 +11,7 @@ import { Format } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
 import { Reckoner } from '../core/Reckoner.ts';
 import { Track } from '../core/Track.ts';
+import { aspectLamp } from './SignalAspect.ts';
 import { distanceFraction } from '../../shared/motion.ts';
 import { Theme } from '../core/Theme.ts';
 import type { Api } from '../core/Api.ts';
@@ -274,6 +275,7 @@ export class MapView {
       typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     this.showSpeed(kmh, p.limitKmh);
+    this.showAspect(t);
     // Legs with no routed track are animated too, along the straight line the
     // map draws for them. That is the same interpolation the server already
     // uses for the position there, and the marker renders dashed to say so —
@@ -353,6 +355,15 @@ export class MapView {
       return from + (to - from) * f;
     }
     return null;
+  }
+
+  /** The deduced signal aspect, beside the speed. */
+  private showAspect(t: TrainDTO): void {
+    const el = document.getElementById('mapAspect');
+    if (!el) return;
+    const lamp = aspectLamp(t);
+    el.innerHTML = lamp;
+    el.hidden = !lamp;
   }
 
   private stopAnimation(): void {
