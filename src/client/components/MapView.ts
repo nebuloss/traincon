@@ -111,7 +111,78 @@ export class MapView {
     this.map.addControl(new maplibregl.NavigationControl(), 'top-right');
     await new Promise<void>((r) => this.map!.on('load', () => r()));
     this.addRailLayers();
+    this.addStationTracks();
     requestAnimationFrame(() => this.map?.resize());
+  }
+
+  /**
+   * Individual tracks and platforms, from OpenStreetMap, at close zoom.
+   *
+   * The route the app draws is a centreline — one line for the whole railway,
+   * so a station's half-dozen platform roads collapse into a single stroke and
+   * two trains standing in it appear on top of each other. OSM maps each track
+   * separately where anyone has surveyed it, which in practice means the
+   * stations: measured at Paris Montparnasse, 119 ways with 5.2 m between the
+   * closest pair, which is real track spacing.
+   *
+   * Taken as tiles the map fetches itself rather than as a bulk download: only
+   * what is on screen is requested, which is both far less data and the polite
+   * way to use somebody else's tile server. Attribution is set on the source
+   * so MapLibre shows it.
+   *
+   * Only the layout is drawn. Which platform a train is standing at is not
+   * published — GTFS carries no platform field, and Navitia's stop_point is
+   * per mode with platform_code empty — so the train stays on its centreline
+   * rather than being placed on a track chosen by guesswork.
+   */
+  private addStationTracks(): void {
+    if (!this.map || this.map.getSource('osmrail')) return;
+    try {
+      this.map.addSource('osmrail', {
+        type: 'vector',
+        tiles: ['https://tiles.tchoo.net/osmrailways/{z}/{x}/{y}.pbf'],
+        minzoom: 12,
+        maxzoom: 14,
+        attribution:
+          '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a> · ' +
+          '<a href="https://carto.tchoo.net" target="_blank" rel="noopener">Carto Tchoo</a>',
+      });
+
+      // Added before the journey line exists, so it naturally draws beneath
+      // it and the train's own route stays legible on top.
+      this.map.addLayer(
+        {
+          id: 'osm-tracks',
+          type: 'line',
+          source: 'osmrail',
+          'source-layer': 'tracks',
+          minzoom: 14,
+          paint: {
+            'line-color': Theme.token('rail'),
+            'line-width': ['interpolate', ['linear'], ['zoom'], 14, 0.8, 17, 2.4],
+            // Faded in over a zoom level so it does not appear abruptly.
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 0.75],
+          },
+        },
+      );
+
+      this.map.addLayer(
+        {
+          id: 'osm-platforms',
+          type: 'line',
+          source: 'osmrail',
+          'source-layer': 'platform_edges',
+          minzoom: 15,
+          paint: {
+            'line-color': Theme.token('muted'),
+            'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 18, 5],
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.6],
+          },
+        },
+      );
+    } catch {
+      // A third-party tile server is a nicety, not a requirement.
+    }
   }
 
   /** The in-service network, so a train sits visibly on its track. */
