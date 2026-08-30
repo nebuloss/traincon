@@ -304,7 +304,10 @@ export class MapView {
         lastDrawn = frameAt;
         const km = this.modelledKm(t, Date.now() / 1000);
         if (km !== null) {
-          const here = this.track.at(this.reckoner.follow(km, kmh > 0, sinceLast));
+          // Corrections are absorbed by adjusting the drawn speed, so the
+          // train never jumps and never reverses — it just runs a little fast
+          // or a little slow until it agrees with the model again.
+          const here = this.track.at(this.reckoner.follow(km, kmh, sinceLast));
           if (here) {
             this.marker.setLngLat([here.lon, here.lat]);
             const dir = this.marker.getElement().querySelector<HTMLElement>('.tm-dir');

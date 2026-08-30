@@ -1,29 +1,37 @@
 /**
- * Keeps the drawn train from jumping.
+ * Keeps the drawn train from jumping, by adjusting its speed rather than its
+ * position.
  *
- * The map recomputes the train's position from the shared motion model twelve
- * times a second, so between server updates it already agrees with the server
- * — there is no drift to correct. What it cannot avoid is the model's *input*
- * changing: when a refresh revises a leg's times, the modelled position moves,
- * and following that instantly makes the train teleport. Backwards, if the
- * delay grew, which reads as the train physically reversing.
+ * The map recomputes the train's position from the shared motion model many
+ * times a second, so between refreshes it already agrees with the server.
+ * What it cannot avoid is the model's *input* changing: a refresh that revises
+ * a leg's times moves the modelled position, and following that directly makes
+ * the train teleport — backwards, if the delay grew, which reads as the train
+ * physically reversing.
  *
- * So the drawn position follows the modelled one rather than equalling it: it
- * closes a fraction of the gap each frame, and never moves backwards while the
- * train is running forwards. An overshoot waits to be caught up rather than
- * sliding back.
+ * Easing the position across the gap fixes the jump but not the lie: the train
+ * slides at a rate unrelated to how fast it is supposed to be going. So the
+ * correction is applied to speed instead. The drawn train runs a little faster
+ * to catch up, or a little slower to be caught up, and its position is always
+ * the integral of a plausible speed. It is therefore continuous by
+ * construction, and can never reverse, because the drawn speed is never
+ * allowed below zero — an overshoot simply coasts to a stand and waits.
  *
- * A gap too large to be a revision of the same journey — a re-identified
- * train, a different route — is taken at once. Easing across kilometres would
- * be a lie about where the train is.
+ * A gap too large to be the same journey — a re-identified train, a different
+ * route — is taken at once. No believable speed closes twenty kilometres, and
+ * pretending otherwise would put the train somewhere it is not for minutes.
  */
 
 /** Beyond this a gap is a different journey, not a revision of this one. */
 const SNAP_KM = 5;
-/** Roughly how long closing a gap takes. */
-const CONVERGE_MS = 1200;
-/** Below this the remaining gap is not worth easing; take it. */
-const SETTLE_KM = 0.005;
+/** The gap should be gone in about this long. */
+const HORIZON_MS = 8000;
+/** How much faster than reported the drawn train may run to catch up. */
+const MAX_FACTOR = 1.6;
+/** Catch-up speed available even to a train the model says is stopped. */
+const MIN_CATCHUP_KMH = 30;
+/** Below this the gap is not worth correcting at all. */
+const SETTLE_KM = 0.003;
 
 export class Reckoner {
   private shown: number | null = null;
@@ -39,31 +47,40 @@ export class Reckoner {
   }
 
   /**
-   * Move towards `target`, and report where to draw.
+   * Advance the drawn train towards where the model says it is.
    *
-   * @param target  where the model says the train is, in km along the route
-   * @param forward whether the train is running, which forbids going backwards
-   * @param dtMs    milliseconds since the last call
+   * @param target   modelled position, km along the route
+   * @param kmh      speed the train is reported to be doing
+   * @param dtMs     milliseconds since the last call
+   * @returns        where to draw it, km along the route
    */
-  follow(target: number, forward: boolean, dtMs: number): number {
-    const gap = this.shown === null ? Infinity : Math.abs(target - this.shown);
-    // Straight to it when there is nothing to hide: the first position, a jump
-    // too big to be this journey, or a gap already down to a few metres —
-    // easing that last bit only leaves a permanent lag behind the model.
-    if (this.shown === null || gap > SNAP_KM || (gap < SETTLE_KM && !(forward && target < this.shown))) {
+  follow(target: number, kmh: number, dtMs: number): number {
+    if (this.shown === null || Math.abs(target - this.shown) > SNAP_KM) {
       this.shown = target;
       return target;
     }
 
-    // A fixed fraction of the remaining gap per unit time: fast while the gap
-    // is wide, imperceptible as it closes, and never overshooting.
-    const share = Math.min(1, Math.max(0, dtMs) / CONVERGE_MS);
-    let next = this.shown + (target - this.shown) * share;
+    const gap = target - this.shown;
+    if (Math.abs(gap) < SETTLE_KM) {
+      this.shown = target;
+      return target;
+    }
 
-    // Never reverse under power. A position that ran ahead waits for the model
-    // to reach it instead of sliding back to meet it.
-    if (forward && next < this.shown) next = this.shown;
+    // The speed that would close the gap over the horizon, on top of the
+    // train's own. Positive gap means the model is ahead and it hurries;
+    // negative means it has overrun and eases off.
+    const correction = gap / (HORIZON_MS / 3_600_000);
+    const ceiling = Math.max(kmh * MAX_FACTOR, MIN_CATCHUP_KMH);
 
+    // Never below zero: that is the whole guarantee. A train that has overrun
+    // slows, stops if it must, and waits to be caught up — it does not reverse.
+    const drawnKmh = Math.min(ceiling, Math.max(0, kmh + correction));
+
+    const dt = Math.max(0, dtMs);
+    let next = this.shown + drawnKmh * (dt / 3_600_000);
+
+    // Do not sail past the target while catching up to it.
+    if (gap > 0) next = Math.min(next, target);
     this.shown = next;
     return next;
   }

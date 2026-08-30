@@ -1,15 +1,15 @@
-// Keeping the drawn train from jumping.
+// Absorbing position corrections by adjusting speed.
 //
 // The map recomputes position from the shared motion model many times a
-// second, so it already agrees with the server between updates. What it cannot
-// avoid is the model's input changing: a refresh that revises a leg's times
-// moves the modelled position, and following that instantly makes the train
-// teleport — backwards if the delay grew, which reads as the train physically
-// reversing.
+// second, so it already agrees with the server between refreshes. What it
+// cannot avoid is the model's input changing: a refresh that revises a leg's
+// times moves the modelled position, and following that directly makes the
+// train teleport — backwards if the delay grew, which reads as the train
+// physically reversing.
 //
-// These are the guarantees: never backwards under power, never a visible jump
-// for an ordinary revision, and an immediate move for a change too large to be
-// the same journey.
+// The correction is applied to speed rather than position, so the drawn train
+// is always the integral of a plausible speed: continuous by construction, and
+// unable to reverse because that speed is never negative.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,91 +21,112 @@ const { Reckoner } = await import(path.join(ROOT, 'src/client/core/Reckoner.ts')
 
 /** One frame at the animation's real rate. */
 const FRAME = 80;
+/** Run `ms` of frames against a fixed target. */
+function run(r, target, kmh, ms) {
+  const positions = [];
+  for (let t = 0; t < ms; t += FRAME) positions.push(r.follow(target, kmh, FRAME));
+  return positions;
+}
 
 test('the first position is taken as-is', () => {
   const r = new Reckoner();
-  assert.equal(r.follow(10, true, FRAME), 10);
-  assert.equal(r.current, 10);
+  assert.equal(r.follow(10, 200, FRAME), 10);
 });
 
-test('with the model steady, the drawn position follows it', () => {
+test('it converges on a steady model', () => {
   const r = new Reckoner();
-  r.follow(10, true, FRAME);
-  for (let i = 0; i < 100; i++) r.follow(10.5, true, FRAME);
+  r.follow(10, 200, FRAME);
+  run(r, 10.5, 200, 20_000);
   assert.ok(Math.abs(r.current - 10.5) < 0.01, `settled at ${r.current}`);
 });
 
-test('a revision is eased in, not jumped', () => {
+test('catching up is done by running faster, not by jumping', () => {
   const r = new Reckoner();
-  r.follow(12, true, FRAME);
+  r.follow(10, 200, FRAME);
 
-  // A refresh moves the modelled position 600 m forward.
-  const after = r.follow(12.6, true, FRAME);
-  assert.ok(after - 12 < 0.05, `jumped ${((after - 12) * 1000).toFixed(0)} m in one frame`);
-  assert.ok(after > 12, 'but it should be moving toward it');
+  // The model is 400 m ahead. Each frame must move by something a train could
+  // plausibly cover in 80 ms — at most 1.6x of 200 km/h, i.e. 7.1 m.
+  const seen = run(r, 10.4, 200, 3000);
+  let prev = 10;
+  for (const p of seen) {
+    const metres = (p - prev) * 1000;
+    assert.ok(metres >= -1e-9, `moved backwards by ${(-metres).toFixed(1)} m`);
+    assert.ok(metres < 7.2, `covered ${metres.toFixed(1)} m in one frame — a jump`);
+    prev = p;
+  }
 });
 
-test('it never runs backwards while going forwards', () => {
+test('an overrun is absorbed by slowing down, never by reversing', () => {
   const r = new Reckoner();
-  let last = r.follow(20, true, FRAME);
+  r.follow(10, 250, FRAME);
 
-  // The model repeatedly revises backwards, as a growing delay would.
-  for (let round = 0; round < 20; round++) {
-    const target = 20 - round * 0.1;
-    for (let f = 0; f < 12; f++) {
-      const now = r.follow(target, true, FRAME);
-      assert.ok(now >= last - 1e-9, `reversed: ${last} -> ${now}`);
+  // The model says it is 300 m behind what is drawn.
+  const seen = run(r, 9.7, 250, 6000);
+  let prev = 10;
+  for (const p of seen) {
+    assert.ok(p >= prev - 1e-9, `reversed: ${prev} -> ${p}`);
+    prev = p;
+  }
+  // Slowed, rather than held rigid or run on regardless.
+  assert.ok(r.current - 10 < 0.35, 'should have eased off while the model caught up');
+});
+
+test('a train the model says is stopped can still be corrected forward', () => {
+  // Without a floor on the catch-up speed, a stationary train could never
+  // close a gap at all.
+  const r = new Reckoner();
+  r.follow(10, 0, FRAME);
+  run(r, 10.05, 0, 20_000);
+  assert.ok(Math.abs(r.current - 10.05) < 0.01, `stuck at ${r.current}`);
+});
+
+test('it does not sail past the position it is chasing', () => {
+  const r = new Reckoner();
+  r.follow(10, 300, FRAME);
+  const seen = run(r, 10.2, 300, 20_000);
+  for (const p of seen) assert.ok(p <= 10.2 + 1e-9, `overshot to ${p}`);
+});
+
+test('a change too large for one journey is taken at once', () => {
+  const r = new Reckoner();
+  r.follow(10, 200, FRAME);
+  // Twenty kilometres: no believable speed closes that, and easing across it
+  // would show the train somewhere it is not for minutes.
+  assert.equal(r.follow(30, 200, FRAME), 30);
+});
+
+test('a moving model is tracked without the drawn train falling behind', () => {
+  const r = new Reckoner();
+  let modelKm = 10;
+  r.follow(modelKm, 180, FRAME);
+
+  // 180 km/h for two minutes, the model advancing every frame as it would.
+  for (let t = 0; t < 120_000; t += FRAME) {
+    modelKm += 180 * (FRAME / 3_600_000);
+    r.follow(modelKm, 180, FRAME);
+  }
+  assert.ok(Math.abs(r.current - modelKm) < 0.02, `drifted to ${(r.current - modelKm) * 1000} m`);
+});
+
+test('successive backward revisions never produce a reversal', () => {
+  // The real pattern: a delay grows over several refreshes, each one placing
+  // the train behind where it was drawn.
+  const r = new Reckoner();
+  let last = r.follow(20, 250, FRAME);
+  for (let round = 0; round < 10; round++) {
+    const target = 20 - round * 0.08;
+    for (let t = 0; t < 30_000; t += FRAME) {
+      const now = r.follow(target, 250, FRAME);
+      assert.ok(now >= last - 1e-9, `reversed at round ${round}: ${last} -> ${now}`);
       last = now;
     }
   }
 });
 
-test('a position that ran ahead waits to be caught up', () => {
-  const r = new Reckoner();
-  r.follow(30, true, FRAME);
-
-  // Model says 29.5: half a kilometre behind what is drawn.
-  for (let f = 0; f < 40; f++) r.follow(29.5, true, FRAME);
-  assert.ok(r.current >= 30 - 1e-9, 'must hold, not slide back');
-
-  // Once the model passes it, motion resumes.
-  for (let f = 0; f < 40; f++) r.follow(30.4, true, FRAME);
-  assert.ok(r.current > 30, `resumed to ${r.current}`);
-});
-
-test('a stopped train may be corrected backwards', () => {
-  // With no speed there is nothing to catch up, so holding would freeze a
-  // genuine correction in place for ever.
-  const r = new Reckoner();
-  r.follow(30, false, FRAME);
-  for (let f = 0; f < 80; f++) r.follow(29.5, false, FRAME);
-  assert.ok(Math.abs(r.current - 29.5) < 0.05, `stuck at ${r.current}`);
-});
-
-test('a change too large for one journey is taken at once', () => {
-  const r = new Reckoner();
-  r.follow(10, true, FRAME);
-  // Twenty kilometres: a re-identified train, not a revised delay.
-  assert.equal(r.follow(30, true, FRAME), 30);
-});
-
 test('reset makes the next position a fresh start', () => {
   const r = new Reckoner();
-  r.follow(120, true, FRAME);
+  r.follow(120, 200, FRAME);
   r.reset();
   assert.equal(r.current, null);
-  assert.equal(r.follow(3, true, FRAME), 3, 'must not ease across from the old train');
-});
-
-test('a long frame gap closes more of the gap than a short one', () => {
-  const short = new Reckoner();
-  short.follow(10, true, FRAME);
-  short.follow(11, true, 50);
-
-  const long = new Reckoner();
-  long.follow(10, true, FRAME);
-  long.follow(11, true, 1000);
-
-  assert.ok(long.current > short.current, 'convergence should track elapsed time');
-  assert.ok(long.current <= 11 + 1e-9, 'and never overshoot the target');
+  assert.equal(r.follow(3, 200, FRAME), 3);
 });
