@@ -394,6 +394,18 @@ export class MapView {
     const p = t.position;
     const tier = Format.delayTier(t.delay, t.cancelled);
 
+    // Put it on the line, not merely near it.
+    //
+    // The server's position comes from its own routing of the current leg,
+    // while the map draws the whole journey as one line built from those legs
+    // and then simplified. The two agree to within a hundred metres or so,
+    // which is invisible at low zoom and glaring once you zoom in on the
+    // train: it sits beside its own track. Projecting onto the drawn line
+    // costs nothing and makes the two agree exactly.
+    const onLine = this.track ? this.track.at(this.track.distanceAt(p.lat, p.lon)) : null;
+    const lat = onLine?.lat ?? p.lat;
+    const lon = onLine?.lon ?? p.lon;
+
     if (!this.marker) {
       // The same marker as the journey graph — a ringed disc holding the train
       // — so the train reads as one thing across both views.
@@ -410,10 +422,10 @@ export class MapView {
         anchor: 'center',
         rotationAlignment: 'viewport',
       })
-        .setLngLat([p.lon, p.lat])
+        .setLngLat([lon, lat])
         .addTo(this.map);
     } else {
-      this.marker.setLngLat([p.lon, p.lat]);
+      this.marker.setLngLat([lon, lat]);
     }
 
     const el = this.marker.getElement();
@@ -428,7 +440,7 @@ export class MapView {
     // is hidden rather than left pointing at wherever it last went.
     const dir = el.querySelector<HTMLElement>('.tm-dir');
     if (dir) {
-      const bearing = p.bearing ?? null;
+      const bearing = onLine?.bearing ?? p.bearing ?? null;
       dir.style.opacity = bearing === null || !p.speedKmh ? '0' : '1';
       // Rotate about the disc centre first, then push outward, so the wedge
       // orbits the train instead of pivoting where it sits.

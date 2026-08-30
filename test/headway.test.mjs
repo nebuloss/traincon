@@ -1,0 +1,164 @@
+// Trains cannot occupy the same block.
+//
+// Positions are estimated per train, from its own timetable and its own delay,
+// so nothing stops two of them being drawn on the same piece of track: a fast
+// train catching a slower one is shown closing right up to it. In reality it is
+// held a block short and slowed — a regular sight between Bordeaux and Dax.
+//
+// Note what this is not: SNCF does not publish signal positions (the dataset
+// named for them is a computer-vision corpus, no coordinates), so this is not a
+// claim about which signal is at danger. It is the weaker and still true claim
+// that a train cannot be where another one already is.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const { analyseTraffic, headingGap } = await import(path.join(ROOT, 'dist-server/server/Headway.js'));
+const { BlockIndex, blockLengthFor } = await import(path.join(ROOT, 'dist-server/server/Blocks.js'));
+
+/** A train running between stops, `km` north of a base point. */
+function running(number, line, km, progress, bearing = 0) {
+  return {
+    number,
+    line,
+    position: {
+      basis: 'between',
+      lat: 44 + km / 111.32,
+      lon: -0.5,
+      bearing,
+      progress,
+      speedKmh: 160,
+    },
+  };
+}
+
+/** Two kilometres of block everywhere. */
+const twoKm = () => 2000;
+
+test('a train closing on the one ahead is held back', () => {
+  // 8542 is 800 m ahead of 8540 on the same line, both northbound.
+  const t = analyseTraffic([running('8540', 'L1', 0, 0.4), running('8542', 'L1', 0.8, 0.5)], twoKm);
+
+  const follower = t.get('8540');
+  assert.equal(follower.ahead, '8542');
+  assert.equal(follower.aspect, 'semaphore', 'the block ahead is occupied');
+  assert.ok(follower.pushedM > 1000 && follower.pushedM < 1300, `pushed ${follower.pushedM} m`);
+
+  // The leader has nothing in front of it.
+  assert.equal(t.get('8542').aspect, 'libre');
+  assert.equal(t.get('8542').pushedM, undefined);
+});
+
+test('one block clear reads as a warning, not as clear', () => {
+  // 3 km behind on 2 km blocks: the section ahead is empty, but the one after
+  // it is not, so the signal in front of this train warns.
+  const t = analyseTraffic([running('8540', 'L1', 0, 0.4), running('8542', 'L1', 3, 0.5)], twoKm);
+  assert.equal(t.get('8540').aspect, 'avertissement');
+  assert.equal(t.get('8540').pushedM, undefined, 'a clear block needs no correction');
+});
+
+test('two blocks clear reads as clear', () => {
+  const t = analyseTraffic([running('8540', 'L1', 0, 0.4), running('8542', 'L1', 6, 0.5)], twoKm);
+  assert.equal(t.get('8540').aspect, 'libre');
+  assert.equal(t.get('8540').pushedM, undefined);
+});
+
+test('the train in front is never held by the one behind', () => {
+  const t = analyseTraffic([running('8540', 'L1', 0, 0.4), running('8542', 'L1', 0.5, 0.6)], twoKm);
+  assert.equal(t.get('8542').pushedM, undefined, 'the leader must not be pushed by its follower');
+  assert.equal(t.get('8542').ahead, undefined);
+});
+
+test('trains going opposite ways do not constrain each other', () => {
+  // Two tracks, one each way: they pass, they do not queue.
+  const t = analyseTraffic(
+    [running('8540', 'L1', 0, 0.4, 0), running('9001', 'L1', 0.5, 0.5, 180)],
+    twoKm,
+  );
+  for (const v of t.values()) assert.equal(v.pushedM, undefined, 'passing is not following');
+});
+
+test('trains on different lines do not constrain each other', () => {
+  const t = analyseTraffic([running('8540', 'L1', 0, 0.4), running('7000', 'L2', 0.4, 0.5)], twoKm);
+  for (const v of t.values()) assert.equal(v.ahead, undefined);
+});
+
+test('a train standing in a station is not held', () => {
+  const stopped = running('8540', 'L1', 0, 0.4);
+  stopped.position.basis = 'at_station';
+  const t = analyseTraffic([stopped, running('8542', 'L1', 0.5, 0.5)], twoKm);
+  assert.ok(!t.has('8540'), 'where the timetable puts it is where it is');
+});
+
+test('the tightest constraint wins when several are ahead', () => {
+  const held = analyseTraffic(
+    [
+      running('8540', 'L1', 0, 0.3),
+      running('8542', 'L1', 1.5, 0.5),
+      running('8544', 'L1', 0.6, 0.4), // closer, so this is the binding one
+    ],
+    twoKm,
+  );
+  assert.equal(held.get('8540').ahead, '8544');
+});
+
+test('trains far apart on a long line are not paired', () => {
+  const t = analyseTraffic([running('8540', 'L1', 0, 0.4), running('8542', 'L1', 120, 0.5)], twoKm);
+  assert.equal(t.get('8540').ahead, undefined, '120 km apart is not following');
+});
+
+test('nothing is held where there is no block working', () => {
+  // "Sans cantonnement" means no spacing to enforce; inventing one would be
+  // worse than leaving the estimate alone.
+  const t = analyseTraffic([running('8540', 'L1', 0, 0.4), running('8542', 'L1', 0.2, 0.5)], () => 0);
+  assert.equal(t.get('8540').pushedM, undefined);
+  assert.equal(t.get('8540').aspect, 'inconnu', 'no signalling modelled means no claim');
+});
+
+test('headings wrap correctly around north', () => {
+  assert.equal(headingGap(350, 10), 20);
+  assert.equal(headingGap(10, 350), 20);
+  assert.equal(headingGap(0, 180), 180);
+});
+
+// ── block lengths from the published working mode ────────────────────────────
+
+test('each published mode maps to a plausible spacing', () => {
+  assert.equal(blockLengthFor('Block automatique lumineux'), 1800);
+  assert.equal(blockLengthFor('Block automatique lumineux de voie banalisée'), 1800);
+  assert.equal(blockLengthFor('Transmission voie-machine 430'), 1500);
+  assert.equal(blockLengthFor('Sans cantonnement'), 0);
+  assert.ok(blockLengthFor('Block automatique à permissivité restreinte de voie unique') > 5000);
+  assert.ok(blockLengthFor('Cantonnement téléphonique de voie unique') > 10000);
+});
+
+test('an unrecognised mode is not guessed at', () => {
+  assert.equal(blockLengthFor('_Autre'), null);
+  assert.equal(blockLengthFor(undefined), null);
+});
+
+test('the index answers by line and kilometre post', () => {
+  const idx = new BlockIndex([
+    { code_ligne: '570000', libelle: 'Block automatique lumineux', pkd: '010+000', pkf: '050+000' },
+    {
+      code_ligne: '570000',
+      libelle: 'Cantonnement téléphonique de voie unique',
+      pkd: '050+000',
+      pkf: '090+000',
+    },
+  ]);
+
+  assert.equal(idx.spacingFor('570000', 20, 30), 1800, 'inside the lit-block section');
+  assert.equal(idx.spacingFor('570000', 60, 70), 20000, 'inside the telephone section');
+  // Spanning both: the longer block binds, since a train must clear it all.
+  assert.equal(idx.spacingFor('570000', 40, 60), 20000);
+});
+
+test('an unknown line falls back rather than failing', () => {
+  const idx = new BlockIndex([]);
+  assert.ok(idx.spacingFor('999999', 1, 2) > 0, 'a default block, not zero');
+  assert.ok(idx.spacingFor(undefined, null, null) > 0);
+});
