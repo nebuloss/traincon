@@ -326,6 +326,9 @@ unpack_release() {
   if [ -z "$tag" ]; then
     die "could not resolve the latest release of $GH_REPO"
   fi
+  # Kept so the signal data can be taken from the same release, rather than
+  # from whatever happens to be newest by the time that runs.
+  RELEASE_TAG="$tag"
 
   info "Downloading $tag of $GH_REPO"
   url="https://github.com/${GH_REPO}/releases/download/${tag}/traincon.tar.gz"
@@ -465,8 +468,30 @@ fetch_geometry() {
   fi
 
   info "Downloading rail geometry (~19 MB, once)"
-  sh "$APP_DIR/scripts/fetch-geo.sh" >/dev/null 2>&1 ||
+  TRAINCON_TAG="${RELEASE_TAG:-}" sh "$APP_DIR/scripts/fetch-geo.sh" >/dev/null 2>&1 ||
     warn "geometry unavailable: positions will fall back to straight lines"
+}
+
+# Signals come from the release and are small, so they are refreshed on every
+# install rather than only on the first. Without this an upgrade kept whatever
+# an older version had left behind — and for a long time that was nothing at
+# all, because nothing here fetched them.
+fetch_signals() {
+  [ "$FETCH_GEO" = "1" ] || return 0
+  mkdir -p "$APP_DIR/data/geo"
+
+  if [ -n "${RELEASE_TAG:-}" ]; then
+    url="https://github.com/${GH_REPO}/releases/download/${RELEASE_TAG}/signals.json.gz"
+  else
+    url="https://github.com/${GH_REPO}/releases/latest/download/signals.json.gz"
+  fi
+
+  if curl -fsSL --retry 2 -m 120 "$url" -o "$APP_DIR/data/geo/signals.json.gz" &&
+     gunzip -f "$APP_DIR/data/geo/signals.json.gz"; then
+    info "Signal positions installed"
+  else
+    warn "signals unavailable: train spacing will fall back to block lengths"
+  fi
 }
 
 fix_permissions() {
@@ -548,6 +573,7 @@ main() {
   ensure_user
   write_env
   fetch_geometry
+  fetch_signals
   fix_permissions
 
   service_install

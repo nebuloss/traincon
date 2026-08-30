@@ -31,5 +31,10 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: traincon.tar.gz
+          # The signal positions ride along with the release rather than being
+          # rebuilt from someone else's tile server on every install. 160 kB,
+          # and pinned to the version that was tested against it.
+          files: |
+            traincon.tar.gz
+            data/geo/signals.json.gz
           generate_release_notes: true

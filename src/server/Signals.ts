@@ -1,9 +1,15 @@
 /**
  * Where the signals are, and which of them can stop a train.
  *
- * 106 723 objects covering the whole national network, from the signalling
- * layer published by Carto Tchoo — see data/geo/README.md for the
+ * 24 673 stop signals covering the whole national network, from the
+ * signalling layer published by Carto Tchoo — see data/geo/README.md for the
  * provenance and why the alternatives were not usable.
+ *
+ * The published file carries only what is read here. The tile export it comes
+ * from holds 116 818 objects of every kind; four fifths of them are whistle
+ * boards, speed boards and the like, which this needs for exactly one thing —
+ * the name of the track they stand on — so that is folded into a set per grid
+ * cell when the file is made. See tools/pack-signals.mjs.
  *
  * The two that matter for spacing:
  *
@@ -54,6 +60,34 @@ export interface TrackLayout {
 export interface SignalAhead {
   signal: Signal;
   distanceM: number;
+}
+
+/**
+ * The published form, written by tools/pack-signals.mjs.
+ *
+ * Only the stop signals are carried whole. Everything else in the tile export
+ * contributes one thing — the name of the track it stands on — and that is
+ * folded into `tracks` when the file is made rather than at every boot. It is
+ * a fifth of the objects and an eighth of the bytes.
+ */
+interface PackedSignals {
+  format: number;
+  /**
+   * The cell size the track sets were folded at. Written down because a
+   * reader using a different one would bucket them wrongly and quietly report
+   * the wrong number of tracks.
+   */
+  cell: number;
+  count: number;
+  /** Degrees times 1e5 — about a metre, far finer than the model asks. */
+  lat: number[];
+  lon: number[];
+  /** 1 for a carré, which may not be passed; 0 for a sémaphore, which may. */
+  carre: (0 | 1)[];
+  lines: string[];
+  /** Index into `lines`, or -1 where the line is not known. */
+  line: number[];
+  tracks: [string, string[]][];
 }
 
 function haversineKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
@@ -218,14 +252,45 @@ export class SignalIndex {
     return best;
   }
 
+  /** Rebuild from the published columns. */
+  private static fromPacked(p: PackedSignals): SignalIndex | null {
+    if (p.cell !== CELL) {
+      // Refusing is better than answering wrongly: the track sets were folded
+      // at the file's cell size, and reading them at another one would put
+      // them in the wrong buckets.
+      console.warn(`signals: packed at cell ${p.cell}, this build uses ${CELL}`);
+      return null;
+    }
+
+    const signals: Signal[] = [];
+    for (let i = 0; i < p.count; i++) {
+      const li = p.line[i] ?? -1;
+      signals.push({
+        lat: p.lat[i]! / 1e5,
+        lon: p.lon[i]! / 1e5,
+        type: p.carre[i] ? 'CARRE' : 'S',
+        line: li >= 0 ? (p.lines[li] ?? null) : null,
+      });
+    }
+
+    const index = new SignalIndex(signals);
+    for (const [key, names] of p.tracks) index.tracks.set(key, new Set(names));
+    return index;
+  }
+
   /** Load from data/geo, or null when the file has not been fetched. */
   static async load(dataDir = 'data'): Promise<SignalIndex | null> {
     const file = path.join(dataDir, 'geo', 'signals.json');
     if (!existsSync(file)) return null;
     try {
-      const raw = JSON.parse(await readFile(file, 'utf8')) as { rows?: Signal[] };
-      if (!raw.rows?.length) return null;
-      return new SignalIndex(raw.rows);
+      const raw = JSON.parse(await readFile(file, 'utf8')) as Partial<PackedSignals> & {
+        rows?: Signal[];
+      };
+      if (raw.format === 2) return SignalIndex.fromPacked(raw as PackedSignals);
+      // The raw tile export, as published before the file was packed down. An
+      // installation that has not fetched again since still has one of these.
+      if (raw.rows?.length) return new SignalIndex(raw.rows);
+      return null;
     } catch {
       // Signalling is a refinement, not a requirement.
       return null;
