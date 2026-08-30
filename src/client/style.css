@@ -565,7 +565,9 @@ button.primary:active { transform: translateY(1px); }
   font-size: 16px; line-height: 1;
   border-radius: 50%;
   background: var(--panel);
-  border: 2.5px solid var(--accent);
+  /* Ringed in the type's colour, so the graph and the map agree on what
+     kind of train this is. Falls back to the accent if none is set. */
+  border: 2.5px solid var(--tl-train, var(--accent));
   /* The second shadow is an opaque halo in the panel colour: it breaks the
      rail cleanly around the marker instead of letting the line run up to the
      ring, which read as the line passing over the train. */
@@ -813,6 +815,13 @@ i.sw.verylate { background: var(--verylate); } i.sw.cancelled { background: var(
   transition: transform .6s ease, opacity .3s;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45));
 }
+/*
+ * Zoomed in, the train is drawn on the map itself — a polygon per car that
+ * bends with the track (see core/TrainBody). The marker would then be a second
+ * train sitting on the first, so it stands down while the body is drawn.
+ */
+.train-marker.is-bodied { opacity: 0; pointer-events: none; }
+
 .train-marker.is-stopped .tm-body { opacity: .82; }
 /* An interpolated position that is not on real track: say so by softening it. */
 .train-marker.is-coarse .tm-body { opacity: .6; border-style: dashed; }

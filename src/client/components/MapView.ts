@@ -12,10 +12,12 @@ import { tr } from '../core/I18n.ts';
 import { Reckoner } from '../core/Reckoner.ts';
 import { Track } from '../core/Track.ts';
 import { aspectLamp } from './SignalAspect.ts';
+import { FAMILY_COLOR, PLAN_ZOOM, WIDTH_M, discView, trainLengthM } from './TrainIcon.ts';
+import { trainBody } from '../core/TrainBody.ts';
 import { distanceFraction } from '../../shared/motion.ts';
 import { Theme } from '../core/Theme.ts';
 import type { Api } from '../core/Api.ts';
-import type { JourneyGeo, JourneyLine, TrainDTO } from '../../shared/types.ts';
+import type { JourneyGeo, JourneyLine, TrainBodyGeo, TrainDTO } from '../../shared/types.ts';
 
 /** MapLibre is loaded from a script tag; this is the surface we rely on. */
 interface MapLike {
@@ -23,7 +25,8 @@ interface MapLike {
   once(ev: string, fn: () => void): void;
   addControl(c: unknown, pos?: string): void;
   addSource(id: string, src: unknown): void;
-  addLayer(layer: unknown): void;
+  addLayer(layer: unknown, before?: string): void;
+  setPaintProperty(layer: string, prop: string, value: unknown): void;
   getSource(id: string): { setData(d: unknown): void } | undefined;
   getLayer(id: string): unknown;
   removeLayer(id: string): void;
@@ -49,9 +52,18 @@ declare const maplibregl: {
 
 export type MapMode = 'train' | 'route';
 
+/** Nothing to draw — used to create and to clear the train-body source. */
+const EMPTY_BODY: TrainBodyGeo = { type: 'FeatureCollection', features: [] };
+
 export class MapView {
   private map: MapLike | null = null;
   private marker: MarkerLike | null = null;
+  /** Which train the marker is currently drawn for, so it is only rebuilt on a change. */
+  private markerForm: string | null = null;
+  /** The train last drawn, so a zoom change can redraw it without a refresh. */
+  private drawn: TrainDTO | null = null;
+  /** Where along the route it was last drawn — the animated position, not the reported one. */
+  private drawnKm: number | null = null;
   private theme: 'light' | 'dark' | null = null;
   private pathFor: string | null = null;
   private geo: JourneyGeo | null = null;
@@ -109,9 +121,17 @@ export class MapView {
     });
     this.theme = this.themeManager.isDark ? 'dark' : 'light';
     this.map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    // Crossing the threshold swaps the disc for the body drawn on the ground.
+    // Only the shape is redone, at the position the train is currently drawn
+    // at: going through drawMarker would snap it back to the last reported
+    // position for a frame, which is visible as a stutter while pinching.
+    this.map.on('zoom', () => {
+      if (this.drawn) this.drawBody(this.drawn, this.drawnKm);
+    });
     await new Promise<void>((r) => this.map!.on('load', () => r()));
     this.addRailLayers();
     this.addStationTracks();
+    this.addTrainBody();
     requestAnimationFrame(() => this.map?.resize());
   }
 
@@ -210,6 +230,50 @@ export class MapView {
     }
   }
 
+  /**
+   * The train drawn on the ground, for when the zoom makes it worth drawing.
+   *
+   * Added empty and filled as the train moves. Kept as a source rather than a
+   * marker because the body has to bend with the track — see core/TrainBody.
+   */
+  private addTrainBody(): void {
+    if (!this.map || this.map.getSource('train-body')) return;
+    this.map.addSource('train-body', { type: 'geojson', data: EMPTY_BODY });
+    this.map.addLayer({
+      id: 'train-body-fill',
+      type: 'fill',
+      source: 'train-body',
+      minzoom: PLAN_ZOOM,
+      paint: {
+        // Coloured by type, from the same table the marker uses.
+        'fill-color': [
+          'match',
+          ['get', 'family'],
+          'tgv',
+          FAMILY_COLOR.tgv,
+          'ic',
+          FAMILY_COLOR.ic,
+          'ter',
+          FAMILY_COLOR.ter,
+          FAMILY_COLOR.other,
+        ],
+        'fill-opacity': 0.92,
+      },
+    });
+    this.map.addLayer({
+      id: 'train-body-line',
+      type: 'line',
+      source: 'train-body',
+      minzoom: PLAN_ZOOM,
+      paint: {
+        'line-color': Theme.token('ok'),
+        'line-width': 1.4,
+        // The couplings only need drawing once the cars are wider than the line.
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], PLAN_ZOOM, 0.35, 16.5, 0.9],
+      },
+    });
+  }
+
   /** The in-service network, so a train sits visibly on its track. */
   private addRailLayers(): void {
     if (!this.map || this.map.getSource('rail')) return;
@@ -304,25 +368,44 @@ export class MapView {
       if (src) src.setData(this.geo);
       else {
         this.map.addSource('follow', { type: 'geojson', data: this.geo });
-        this.map.addLayer({
-          id: 'follow-path',
+        // Inserted under the train, not appended: these layers are created on
+        // the first train shown, long after the body layers exist at startup,
+        // so left to the default order the route line would be drawn over the
+        // train.
+        const underTrain = this.map.getLayer('train-body-fill') ? 'train-body-fill' : undefined;
+        this.map.addLayer(
+          {
+            id: 'follow-path',
           type: 'line',
           source: 'follow',
-          filter: ['==', ['geometry-type'], 'LineString'],
-          paint: { 'line-color': Theme.token('accent'), 'line-width': 3.5, 'line-opacity': 0.9 },
-        });
-        this.map.addLayer({
-          id: 'follow-stops',
-          type: 'circle',
-          source: 'follow',
-          filter: ['==', ['geometry-type'], 'Point'],
-          paint: {
-            'circle-radius': ['case', ['==', ['get', 'terminus'], 1], 5.5, 4],
-            'circle-color': Theme.token('panel'),
-            'circle-stroke-color': Theme.token('accent'),
-            'circle-stroke-width': 1.5,
+            filter: ['==', ['geometry-type'], 'LineString'],
+            paint: {
+              'line-color': Theme.token('accent'),
+              // Thins and fades as the surveyed tracks come in: close up the
+              // real track layout is the better answer, and a fat centreline
+              // drawn across six platform roads is actively misleading. Kept
+              // faintly rather than dropped, so the route is still traceable.
+              'line-width': ['interpolate', ['linear'], ['zoom'], 14, 3.5, 17, 1.5],
+              'line-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0.9, 16.5, 0.22],
+            },
           },
-        });
+          underTrain,
+        );
+        this.map.addLayer(
+          {
+            id: 'follow-stops',
+            type: 'circle',
+            source: 'follow',
+            filter: ['==', ['geometry-type'], 'Point'],
+            paint: {
+              'circle-radius': ['case', ['==', ['get', 'terminus'], 1], 5.5, 4],
+              'circle-color': Theme.token('panel'),
+              'circle-stroke-color': Theme.token('accent'),
+              'circle-stroke-width': 1.5,
+            },
+          },
+          underTrain,
+        );
       }
       this.pathFor = t.number;
       this.reckoner.reset();
@@ -410,7 +493,9 @@ export class MapView {
           // Corrections are absorbed by adjusting the drawn speed, so the
           // train never jumps and never reverses — it just runs a little fast
           // or a little slow until it agrees with the model again.
-          const here = this.track.at(this.reckoner.follow(km, kmh, sinceLast));
+          const drawKm = this.reckoner.follow(km, kmh, sinceLast);
+          const here = this.track.at(drawKm);
+          this.drawBody(t, drawKm);
           if (here) {
             this.marker.setLngLat([here.lon, here.lat]);
             const dir = this.marker.getElement().querySelector<HTMLElement>('.tm-dir');
@@ -460,6 +545,48 @@ export class MapView {
     const lamp = aspectLamp(t);
     el.innerHTML = lamp;
     el.hidden = !lamp;
+  }
+
+
+  /**
+   * Give the marker the glyph for this train's type.
+   *
+   * Rewritten only when the train changes: this runs on every refresh, and
+   * replacing the element's contents each time would restart the direction
+   * pointer's transition and make it stutter.
+   */
+  private shapeMarker(el: HTMLElement, t: TrainDTO): void {
+    const key = `${t.family}:${t.number}`;
+    if (this.markerForm === key) return;
+    this.markerForm = key;
+    // No colour is set here: the marker is tinted by delay tier further down,
+    // which is the more useful thing to read off a dot. The glyph carries the
+    // type at this size; the ground body carries it in colour as well.
+    const dir = el.querySelector('.tm-dir')?.outerHTML ?? '<i class="tm-dir"></i>';
+    el.innerHTML = dir + discView(t);
+  }
+
+  /**
+   * Redraw the body for a train whose nose is `km` along the route.
+   *
+   * Emptied rather than hidden when it is not wanted: below the threshold the
+   * marker is the representation, and leaving stale geometry in the source
+   * would flash the old position on the next zoom in.
+   */
+  private drawBody(t: TrainDTO, km: number | null): void {
+    const src = this.map?.getSource('train-body');
+    if (!src) return;
+    const zoom = this.map?.getZoom() ?? 0;
+    this.drawnKm = km;
+    const wanted = this.track !== null && km !== null && zoom >= PLAN_ZOOM;
+    src.setData(
+      wanted
+        ? trainBody(this.track!, km!, trainLengthM(t), WIDTH_M, t.family)
+        : EMPTY_BODY,
+    );
+    // Only one of the two representations at a time.
+    const el = this.marker?.getElement();
+    if (el) el.classList.toggle('is-bodied', wanted);
   }
 
   private stopAnimation(): void {
@@ -522,7 +649,7 @@ export class MapView {
       // and make it unreadable on any heading but north.
       const el = document.createElement('div');
       el.className = 'train-marker';
-      el.innerHTML = '<i class="tm-dir"></i><span class="tm-body">🚆</span>';
+      el.innerHTML = '<i class="tm-dir"></i>';
       this.marker = new maplibregl.Marker({
         element: el,
         // Explicit: the disc must sit on the coordinate, centred on the track.
@@ -535,13 +662,22 @@ export class MapView {
       this.marker.setLngLat([lon, lat]);
     }
 
+    this.drawn = t;
     const el = this.marker.getElement();
+    this.shapeMarker(el, t);
+    this.drawBody(t, this.track ? this.track.distanceAt(lat, lon) : null);
     el.classList.toggle('is-stopped', !p.speedKmh);
     el.classList.toggle('is-coarse', p.geometry !== 'rail');
     el.classList.toggle('is-um', t.coupledWith.length > 0);
-    el.style.color = Theme.token(
+    const tierColor = Theme.token(
       tier === 'cancelled' ? 'dead' : tier === 'verylate' ? 'verylate' : tier === 'late' ? 'late' : 'ok',
     );
+    el.style.color = tierColor;
+    // The body is filled by type and outlined by punctuality, so close up you
+    // get both at once — a carmine set edged in red is a late TGV.
+    if (this.map?.getLayer('train-body-line')) {
+      this.map.setPaintProperty('train-body-line', 'line-color', tierColor);
+    }
 
     // Only the pointer turns. A stopped train has no meaningful heading, so it
     // is hidden rather than left pointing at wherever it last went.
@@ -557,13 +693,19 @@ export class MapView {
     }
   }
 
-
   dispose(): void {
     this.stopAnimation();
     this.marker?.remove();
     this.marker = null;
     this.pathFor = null;
     this.track = null;
+    this.drawn = null;
+    this.drawnKm = null;
+    this.markerForm = null;
+    // The body lives in a source, not on the marker, so removing the marker
+    // does not take it with it — a stale train would sit there until the next
+    // one was drawn.
+    this.map?.getSource('train-body')?.setData(EMPTY_BODY);
     this.reckoner.reset();
   }
 }

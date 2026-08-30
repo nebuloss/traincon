@@ -287,6 +287,10 @@ export interface LineStringGeom {
   type: 'LineString';
   coordinates: [number, number][];
 }
+export interface PolygonGeom {
+  type: 'Polygon';
+  coordinates: [number, number][][];
+}
 export interface PointGeom {
   type: 'Point';
   coordinates: [number, number];
@@ -319,6 +323,11 @@ export type JourneyStop = Feature<
 export type JourneyGeo = FeatureCollection<JourneyLine | JourneyStop>;
 
 export type RailGeo = FeatureCollection<Feature<LineStringGeom, { v: number; hs: 0 | 1 }>>;
+
+/** The train drawn to scale on the ground: one polygon per car. */
+export type TrainBodyGeo = FeatureCollection<
+  Feature<PolygonGeom, { lead: 0 | 1; family: Family }>
+>;
 
 /** One line of the day's worst-delays board. */
 export interface WorstTrainDTO {

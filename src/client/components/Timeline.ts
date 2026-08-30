@@ -14,6 +14,7 @@
 import { Format } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
 import type { Call, TrainDTO } from '../../shared/types.ts';
+import { familyColor, familyGlyph } from './TrainIcon.ts';
 
 /** Keep in sync with --row-h in the stylesheet. */
 export const ROW_H = 46;
@@ -106,9 +107,11 @@ export class Timeline {
       <div class="tl-fill" style="top:calc(6px + ${railStart}px); height:${travelled}"></div>
       <div class="tl-rail" style="top:calc(6px + ${markTop}px + var(--mark-r)); height:${remaining}"></div>
       <ul class="tl-list">${rows}</ul>
-      <div class="tl-train ${atStop ? 'at-stop' : ''}" style="top:${markTop}px"
+      <div class="tl-train ${atStop ? 'at-stop' : ''}"
+           style="top:${markTop}px; --tl-train: ${familyColor(this.train)}"
            title="${Format.esc(Format.position(this.train.position))}"
-           aria-label="${Format.esc(Format.position(this.train.position))}">🚆</div>
+           aria-label="${Format.esc(Format.position(this.train.position))}"
+           >${familyGlyph(this.train)}</div>
     </div>`;
   }
 }
