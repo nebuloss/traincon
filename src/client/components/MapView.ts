@@ -237,7 +237,12 @@ export class MapView {
       const el = document.createElement('div');
       el.className = 'train-marker';
       el.innerHTML = '<i class="tm-dir"></i><span class="tm-body">🚆</span>';
-      this.marker = new maplibregl.Marker({ element: el, rotationAlignment: 'viewport' })
+      this.marker = new maplibregl.Marker({
+        element: el,
+        // Explicit: the disc must sit on the coordinate, centred on the track.
+        anchor: 'center',
+        rotationAlignment: 'viewport',
+      })
         .setLngLat([p.lon, p.lat])
         .addTo(this.map);
     } else {
@@ -258,7 +263,11 @@ export class MapView {
     if (dir) {
       const bearing = p.bearing ?? null;
       dir.style.opacity = bearing === null || !p.speedKmh ? '0' : '1';
-      if (bearing !== null) dir.style.transform = `rotate(${bearing}deg)`;
+      // Rotate about the disc centre first, then push outward, so the wedge
+      // orbits the train instead of pivoting where it sits.
+      if (bearing !== null) {
+        dir.style.transform = `rotate(${bearing}deg) translateY(calc(-1 * var(--tm-orbit)))`;
+      }
     }
   }
 

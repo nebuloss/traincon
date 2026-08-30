@@ -58,6 +58,8 @@ export interface RailPath {
   cumT: number[];
   /** Line speed of each segment, km/h. */
   segV: number[];
+  /** Modelled speed at each vertex, km/h — the profile the timing came from. */
+  v: number[];
   /** Total track distance, km. */
   total: number;
   /** Straight-line distance, km, for sanity checks. */
@@ -169,34 +171,89 @@ export class SpeedIndex {
 }
 
 /**
- * A train leaves and enters a station at rest, so the first and last kilometres
- * are covered far slower than the line speed. v = sqrt(2·a·x) with a gentle
- * 0.4 m/s² captures that without pretending to model traction.
+ * How hard a train changes speed, in m/s².
+ *
+ * Service values, not emergency ones: a full train accelerates gently and
+ * brakes gently for comfort. Braking is the stronger of the two, which is why
+ * a train holds line speed almost to a restriction and then loses it quickly,
+ * rather than the reverse.
  */
 const ACCEL_MS2 = 0.4;
-function rampedSpeed(vKmh: number, distFromStopKm: number): number {
-  const x = Math.max(0, distFromStopKm) * 1000;
-  const vRamp = Math.sqrt(2 * ACCEL_MS2 * x) * 3.6;
-  return Math.max(8, Math.min(vKmh, vRamp || vKmh));
-}
+const BRAKE_MS2 = 0.5;
 
 /**
  * Cumulative nominal traversal time (hours) along a path.
  *
- * Each segment is timed at its own line speed, tapered near both ends for
- * acceleration and braking. Absolute values do not matter — only the shape,
- * since the profile is scaled onto the timetable's actual leg duration.
+ * Built from a speed profile obeying three constraints at once: the line speed
+ * of every segment, the rate the train can gain speed, and the rate it can
+ * lose it. Two passes give exactly that — forward for acceleration, backward
+ * for braking — taking the lower at each vertex.
+ *
+ * The backward pass is what makes this worth doing. Each segment used to be
+ * timed at its own limit, so a train dropped from 300 to 160 km/h the instant
+ * it met a restriction. A real one must brake well before: at these rates,
+ * shedding 140 km/h takes about 1.5 km. The same pass makes it arrive at rest
+ * and the forward pass makes it leave at rest, so the start and stop ramps now
+ * fall out of the physics instead of being a separate taper bolted on.
+ *
+ * Absolute values do not matter — only the shape, since the profile is scaled
+ * onto the timetable's actual leg duration.
  */
-function nominalTimeProfile(cum: number[], segV: number[], total: number): number[] {
-  const out = [0];
-  for (let i = 1; i < cum.length; i++) {
-    const d = cum[i]! - cum[i - 1]!;
-    const mid = (cum[i]! + cum[i - 1]!) / 2;
-    const vLine = segV[i - 1] ?? segV[segV.length - 1] ?? 100;
-    const v = rampedSpeed(vLine, Math.min(mid, total - mid));
-    out.push(out[i - 1]! + (v > 0 ? d / v : 0));
+export function speedAndTime(
+  cum: number[],
+  segV: number[],
+): { v: number[]; cumT: number[] } {
+  const n = cum.length;
+  if (n < 2) return { v: n ? [0] : [], cumT: n ? [0] : [] };
+
+  // Float64Array rather than number[]: one flat buffer instead of a boxed
+  // array, allocated once per path. This runs when a path is first routed and
+  // never again — the result is cached with the path — so the cost is a
+  // handful of microseconds per new leg, not per train per refresh.
+  const v = new Float64Array(n);
+
+  // Forward pass: leaves at rest and cannot gain speed faster than it
+  // accelerates. The line-speed ceiling at a vertex is the lower of the two
+  // segments meeting there, computed inline rather than into its own array.
+  v[0] = 0;
+  for (let i = 1; i < n; i++) {
+    const before = segV[i - 1];
+    const after = i < n - 1 ? segV[i] : undefined;
+    let limit = before ?? after ?? 100;
+    if (after !== undefined && after < limit) limit = after;
+
+    const dx = (cum[i]! - cum[i - 1]!) * 1000;
+    const reach = Math.sqrt(v[i - 1]! * v[i - 1]! + 2 * ACCEL_MS2 * (dx > 0 ? dx : 0));
+    const cap = limit / 3.6;
+    v[i] = reach < cap ? reach : cap;
   }
-  return out;
+
+  // Backward pass: arrives at rest, and must already be slow enough for what
+  // is ahead — a lower limit, or the stop itself.
+  v[n - 1] = 0;
+  for (let i = n - 2; i >= 0; i--) {
+    const dx = (cum[i + 1]! - cum[i]!) * 1000;
+    const able = Math.sqrt(v[i + 1]! * v[i + 1]! + 2 * BRAKE_MS2 * (dx > 0 ? dx : 0));
+    if (able < v[i]!) v[i] = able;
+  }
+
+  // One loop for both outputs, so the profile is walked once more and no
+  // intermediate array is built.
+  const kmh: number[] = new Array(n);
+  const cumT: number[] = new Array(n);
+  kmh[0] = 0;
+  cumT[0] = 0;
+  for (let i = 1; i < n; i++) {
+    const dx = (cum[i]! - cum[i - 1]!) * 1000;
+    // Mean of the endpoints, floored: on a single-segment path both ends are
+    // zero, and dividing by that would be an infinite crossing time.
+    let mean = (v[i - 1]! + v[i]!) / 2;
+    if (mean < 2) mean = 2;
+    cumT[i] = cumT[i - 1]! + (dx > 0 ? dx : 0) / mean / 3600;
+    kmh[i] = v[i]! * 3.6;
+  }
+
+  return { v: kmh, cumT };
 }
 
 export class RailGraph {
@@ -252,8 +309,9 @@ export class RailGraph {
    * vertices — about 110 MB against a 281 MB ceiling, in one structure. That
    * is what exhausted the heap.
    *
-   * Each vertex costs roughly 80 bytes: a two-element array for [lat, lon]
-   * plus one double each in cum, cumT and segV. 400 000 is therefore ~32 MB.
+   * Each vertex costs roughly 88 bytes: a two-element array for [lat, lon]
+   * plus one double each in cum, cumT, segV and the speed profile. 400 000 is
+   * therefore ~35 MB.
    */
   private readonly pathPointBudget = Number(process.env['RAIL_PATH_POINTS'] ?? 400_000);
   /** Secondary guard, for a run of unusually short paths. */
@@ -512,7 +570,7 @@ export class RailGraph {
         const slack = direct < 15 ? 3.2 : direct < 60 ? 2.2 : 1.8;
         result =
           total <= Math.max(12, direct * slack)
-            ? { pts, cum, segV, total, direct, cumT: nominalTimeProfile(cum, segV, total) }
+            ? { pts, cum, segV, total, direct, ...speedAndTime(cum, segV) }
             : null;
       }
     }
@@ -553,9 +611,11 @@ export class RailGraph {
     const [la, lo] = p.pts[i - 1]!;
     const [lb, lb2] = p.pts[i]!;
 
-    const vLine = p.segV[i - 1] ?? null;
-    const lineKmh =
-      vLine == null ? null : Math.round(rampedSpeed(vLine, Math.min(target, p.total - target)));
+    // The modelled speed here, interpolated across the segment, so what is
+    // reported is exactly what produced the timing.
+    const va = p.v[i - 1];
+    const vb = p.v[i];
+    const lineKmh = va == null || vb == null ? null : Math.round(va + (vb - va) * t);
 
     return {
       lat: la + (lb - la) * t,

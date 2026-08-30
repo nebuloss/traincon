@@ -745,7 +745,11 @@ i.sw.verylate { background: var(--verylate); } i.sw.cancelled { background: var(
  * both views. `color` is set from the delay tier and drives the ring and the
  * heading pointer.
  */
-.train-marker { position: relative; width: 30px; height: 30px; cursor: pointer; }
+.train-marker {
+  position: relative; width: 30px; height: 30px; cursor: pointer;
+  /* How far the heading wedge sits from the disc centre. */
+  --tm-orbit: 19px;
+}
 .train-marker .tm-body {
   position: absolute; inset: 0;
   display: grid; place-items: center;
@@ -755,16 +759,20 @@ i.sw.verylate { background: var(--verylate); } i.sw.cancelled { background: var(
   border: 2.5px solid currentColor;
   box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
 }
-/* The heading, as a wedge just outside the ring. Rotated from the bearing, so
-   0deg must point north — hence the -50% translate before the offset. */
+/*
+ * The heading, as a wedge orbiting the disc.
+ *
+ * Anchored at the disc centre and rotated about it, then pushed outward — in
+ * that order, so it swings around the train rather than pivoting on itself.
+ * The transform is composed in MapView from the bearing.
+ */
 .train-marker .tm-dir {
   position: absolute; left: 50%; top: 50%;
-  width: 0; height: 0; margin: -1px 0 0 -5px;
+  width: 0; height: 0; margin: -4.5px 0 0 -5px;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
   border-bottom: 9px solid currentColor;
-  transform-origin: 50% 1px;
-  translate: 0 -19px;
+  transform-origin: 50% 50%;
   transition: transform .6s ease, opacity .3s;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45));
 }
@@ -774,9 +782,8 @@ i.sw.verylate { background: var(--verylate); } i.sw.cancelled { background: var(
 .train-marker.is-um .tm-body { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 35%, transparent), 0 2px 6px rgba(0, 0, 0, .45); }
 
 @media (min-width: 700px) {
-  .train-marker { width: 36px; height: 36px; }
+  .train-marker { width: 36px; height: 36px; --tm-orbit: 22px; }
   .train-marker .tm-body { font-size: 20px; border-width: 3px; }
-  .train-marker .tm-dir { translate: 0 -22px; }
 }
 .maplibregl-popup-content {
   background: var(--panel); color: var(--fg); border-radius: 10px;
