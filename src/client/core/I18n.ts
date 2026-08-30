@@ -150,6 +150,8 @@ const FR: Dict = {
   'signal.libre': 'Voie libre',
   'signal.avertissement': 'Avertissement',
   'signal.semaphore': 'Sémaphore',
+  // Deux feux rouges : l'arrêt absolu, que le sémaphore n'impose pas.
+  'signal.carre': 'Carré',
   'signal.inconnu': 'Signal inconnu',
   'signal.following': '{n} occupe la section, à {m} m devant',
   'signal.opposing': 'Voie unique : {n} vient en sens inverse, à {m} m',
@@ -380,6 +382,9 @@ const EN: Dict = {
   'signal.libre': 'Clear',
   'signal.avertissement': 'Caution',
   'signal.semaphore': 'Stop',
+  // Kept in French: the two signals are distinct in French practice and the
+  // English word "stop" covers both, losing the distinction the icon draws.
+  'signal.carre': 'Carré (absolute stop)',
   'signal.inconnu': 'Unknown',
   'signal.following': '{n} is occupying the section, {m} m ahead',
   'signal.opposing': 'Single track: {n} is coming the other way, {m} m off',

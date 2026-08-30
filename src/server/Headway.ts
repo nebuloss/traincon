@@ -70,6 +70,8 @@ export interface Traffic {
   pushedM?: number;
   /** Distance to the next signal that could stop it, when known. */
   signalM?: number;
+  /** Which kind of signal that is: a carré shows two reds, a sémaphore one. */
+  signalKind?: 'carre' | 'semaphore';
   /**
    * The other train is coming the other way on a single track.
    *
@@ -180,7 +182,11 @@ export function analyseTraffic(
    * where the train would actually be brought to a stand rather than an
    * average for that kind of line.
    */
-  nextSignalM?: (lat: number, lon: number, bearing: number) => number | null,
+  nextSignal?: (
+    lat: number,
+    lon: number,
+    bearing: number,
+  ) => { m: number; kind: 'carre' | 'semaphore' } | null,
   /**
    * Track layout at a point. On single track a train is constrained by
    * everything on the line, not merely by what is in front of it.
@@ -285,9 +291,12 @@ export function analyseTraffic(
       // The signal it is running towards protects the occupied block. Where
       // the signalling is known, use the real one; otherwise fall back to the
       // block boundary, which is one block behind the train ahead.
-      const realM = nextSignalM?.(pa.lat, pa.lon, pa.bearing ?? 0) ?? null;
-      const toRedM = realM ?? (gapKm - blockKm) * 1000;
-      if (realM !== null) traffic0.signalM = Math.round(realM);
+      const real = nextSignal?.(pa.lat, pa.lon, pa.bearing ?? 0) ?? null;
+      const toRedM = real ? real.m : (gapKm - blockKm) * 1000;
+      if (real) {
+        traffic0.signalM = Math.round(real.m);
+        traffic0.signalKind = real.kind;
+      }
       const freeKmh = pa.speedKmh || 0;
       if (freeKmh > 0) {
         const allowed = approachSpeed(toRedM, freeKmh);

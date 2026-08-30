@@ -158,6 +158,8 @@ export interface TrainDTO {
     allowedKmh?: number;
     /** Distance to the next signal that could stop it, metres. */
     signalM?: number;
+    /** Which kind it is: a carré shows two reds and may not be passed. */
+    signalKind?: 'carre' | 'semaphore';
     /** The other train is coming the other way on a single track. */
     opposing?: boolean;
   } | null;
@@ -324,9 +326,12 @@ export type JourneyGeo = FeatureCollection<JourneyLine | JourneyStop>;
 
 export type RailGeo = FeatureCollection<Feature<LineStringGeom, { v: number; hs: 0 | 1 }>>;
 
-/** The train drawn to scale on the ground: one polygon per car. */
+/** The pieces the drawn train is made of — see client/core/TrainBody. */
+export type TrainPart = 'body' | 'roof' | 'glass' | 'panto' | 'kit' | 'gangway';
+
+/** The train drawn to scale on the ground, seen from above. */
 export type TrainBodyGeo = FeatureCollection<
-  Feature<PolygonGeom, { lead: 0 | 1; family: Family }>
+  Feature<PolygonGeom, { part: TrainPart; lead: 0 | 1; family: Family }>
 >;
 
 /** One line of the day's worst-delays board. */

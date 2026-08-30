@@ -12,7 +12,14 @@ import { tr } from '../core/I18n.ts';
 import { Reckoner } from '../core/Reckoner.ts';
 import { Track } from '../core/Track.ts';
 import { aspectLamp } from './SignalAspect.ts';
-import { FAMILY_COLOR, PLAN_ZOOM, WIDTH_M, discView, trainLengthM } from './TrainIcon.ts';
+import {
+  FAMILY_COLOR,
+  PLAN_ZOOM,
+  WIDTH_M,
+  discView,
+  metresPerPixel,
+  trainLengthM,
+} from './TrainIcon.ts';
 import { trainBody } from '../core/TrainBody.ts';
 import { distanceFraction } from '../../shared/motion.ts';
 import { Theme } from '../core/Theme.ts';
@@ -51,6 +58,9 @@ declare const maplibregl: {
 };
 
 export type MapMode = 'train' | 'route';
+
+/** The narrowest the drawn body may get on screen, in pixels. */
+const MIN_BODY_PX = 11;
 
 /** Nothing to draw — used to create and to clear the train-body source. */
 const EMPTY_BODY: TrainBodyGeo = { type: 'FeatureCollection', features: [] };
@@ -160,7 +170,9 @@ export class MapView {
     try {
       this.map.addSource('osmrail', {
         type: 'vector',
-        tiles: ['https://tiles.tchoo.net/osmrailways/{z}/{x}/{y}.pbf'],
+        // No .pbf: that form answers 301 to this one, so every tile paid for
+        // a redirect. Both hops send CORS, which is why it half-worked.
+        tiles: ['https://tiles.tchoo.net/osmrailways/{z}/{x}/{y}'],
         minzoom: 12,
         maxzoom: 14,
         attribution:
@@ -176,30 +188,43 @@ export class MapView {
           type: 'line',
           source: 'osmrail',
           'source-layer': 'tracks',
-          minzoom: 14,
+          minzoom: 13,
           paint: {
             'line-color': Theme.token('rail'),
-            'line-width': ['interpolate', ['linear'], ['zoom'], 14, 0.8, 17, 2.4],
-            // Faded in over a zoom level so it does not appear abruptly.
-            'line-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 0.75],
+            'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0.6, 17, 2.4],
+            // Faded in over a zoom level so it does not appear abruptly. The
+            // ramp used to end where the layer began, so the tracks were fully
+            // transparent at every zoom they were drawn at.
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.5, 0.8],
           },
         },
       );
 
-      this.map.addLayer(
-        {
-          id: 'osm-platforms',
-          type: 'line',
-          source: 'osmrail',
-          'source-layer': 'platform_edges',
-          minzoom: 15,
-          paint: {
-            'line-color': Theme.token('muted'),
-            'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 18, 5],
-            'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.6],
-          },
+      // Platforms are polygons in these tiles, not edges: a fill, with its
+      // outline drawn separately so a narrow platform still reads at z15.
+      this.map.addLayer({
+        id: 'osm-platforms',
+        type: 'fill',
+        source: 'osmrail',
+        'source-layer': 'platforms',
+        minzoom: 15,
+        paint: {
+          'fill-color': Theme.token('muted'),
+          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.35],
         },
-      );
+      });
+      this.map.addLayer({
+        id: 'osm-platform-edges',
+        type: 'line',
+        source: 'osmrail',
+        'source-layer': 'platforms',
+        minzoom: 15,
+        paint: {
+          'line-color': Theme.token('muted'),
+          'line-width': 1,
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.7],
+        },
+      });
       // Platform numbers, from OSM's ref. Which platform a train is at is not
       // published by anyone — GTFS has no such field, Navitia's platform_code
       // is empty, and Carto Tchoo's own endpoint for it is called
@@ -234,18 +259,26 @@ export class MapView {
    * The train drawn on the ground, for when the zoom makes it worth drawing.
    *
    * Added empty and filled as the train moves. Kept as a source rather than a
-   * marker because the body has to bend with the track — see core/TrainBody.
+   * marker because the body has to bend with the track — see core/TrainBody,
+   * which also explains what each `part` is.
+   *
+   * Stacked the way you would see them from above: livery, then the roof
+   * panel darkening it, then everything standing on the roof.
    */
   private addTrainBody(): void {
     if (!this.map || this.map.getSource('train-body')) return;
     this.map.addSource('train-body', { type: 'geojson', data: EMPTY_BODY });
+
+    const only = (part: string): unknown[] => ['==', ['get', 'part'], part];
+
+    // The livery, and the only piece coloured by the kind of train it is.
     this.map.addLayer({
       id: 'train-body-fill',
       type: 'fill',
       source: 'train-body',
       minzoom: PLAN_ZOOM,
+      filter: only('body'),
       paint: {
-        // Coloured by type, from the same table the marker uses.
         'fill-color': [
           'match',
           ['get', 'family'],
@@ -257,18 +290,42 @@ export class MapView {
           FAMILY_COLOR.ter,
           FAMILY_COLOR.other,
         ],
-        'fill-opacity': 0.92,
+        'fill-opacity': 0.95,
       },
     });
+
+    // From above a train is mostly roof: a darker panel inset in the livery,
+    // which leaves the colour showing as a border down each side.
+    for (const [id, part, colour, opacity] of [
+      ['train-roof', 'roof', '#0b0e13', 0.34],
+      ['train-gangway', 'gangway', '#080a0e', 0.6],
+      ['train-kit', 'kit', '#dfe4ec', 0.5],
+      ['train-panto', 'panto', '#0a0d12', 0.85],
+      ['train-glass', 'glass', '#0d1219', 0.8],
+    ] as const) {
+      this.map.addLayer({
+        id,
+        type: 'fill',
+        source: 'train-body',
+        // The detail is only worth drawing once there are pixels for it.
+        minzoom: part === 'roof' || part === 'gangway' ? PLAN_ZOOM : PLAN_ZOOM + 0.8,
+        filter: only(part),
+        paint: { 'fill-color': colour, 'fill-opacity': opacity },
+      });
+    }
+
+    // The outline is the train's punctuality — set in drawMarker, where the
+    // delay tier is known. Only the body carries it; outlining the roof kit
+    // would just be noise.
     this.map.addLayer({
       id: 'train-body-line',
       type: 'line',
       source: 'train-body',
       minzoom: PLAN_ZOOM,
+      filter: only('body'),
       paint: {
         'line-color': Theme.token('ok'),
         'line-width': 1.4,
-        // The couplings only need drawing once the cars are wider than the line.
         'line-opacity': ['interpolate', ['linear'], ['zoom'], PLAN_ZOOM, 0.35, 16.5, 0.9],
       },
     });
@@ -322,6 +379,8 @@ export class MapView {
     this.map.setStyle(this.themeManager.mapStyle);
     this.map.once('styledata', () => {
       this.addRailLayers();
+      this.addStationTracks();
+      this.addTrainBody();
       onReady();
     });
   }
@@ -574,19 +633,36 @@ export class MapView {
    * would flash the old position on the next zoom in.
    */
   private drawBody(t: TrainDTO, km: number | null): void {
-    const src = this.map?.getSource('train-body');
-    if (!src) return;
     const zoom = this.map?.getZoom() ?? 0;
     this.drawnKm = km;
     const wanted = this.track !== null && km !== null && zoom >= PLAN_ZOOM;
-    src.setData(
-      wanted
-        ? trainBody(this.track!, km!, trainLengthM(t), WIDTH_M, t.family)
-        : EMPTY_BODY,
-    );
-    // Only one of the two representations at a time.
+
+    // Swap the representations first, and outside the source guard: if the
+    // body cannot be drawn the disc must stay, and if it can the disc must go.
     const el = this.marker?.getElement();
-    if (el) el.classList.toggle('is-bodied', wanted);
+    const src = this.map?.getSource('train-body');
+    if (el) el.classList.toggle('is-bodied', wanted && Boolean(src));
+    if (!src) return;
+
+    if (!wanted) {
+      src.setData(EMPTY_BODY);
+      return;
+    }
+
+    // Drawn at true length but not at true width. A rail vehicle is 2.9 m
+    // across against 200 m long; at the zooms this appears at that is about
+    // one pixel, which is a hairline rather than a train. Length is the
+    // dimension that means something here — whether the train reaches the end
+    // of the platform — so that stays honest and the width gets a floor.
+    const here = this.track!.at(km!);
+    const mpp = metresPerPixel(zoom, here?.lat ?? 47);
+    const widthM = Math.max(WIDTH_M, MIN_BODY_PX * mpp);
+    // And no more divisions than there are pixels to show them in, or a long
+    // train reads as hatching.
+    const lengthPx = trainLengthM(t) / mpp;
+    src.setData(
+      trainBody(this.track!, km!, trainLengthM(t), widthM, t.family, Math.floor(lengthPx / 18)),
+    );
   }
 
   private stopAnimation(): void {
@@ -650,6 +726,8 @@ export class MapView {
       const el = document.createElement('div');
       el.className = 'train-marker';
       el.innerHTML = '<i class="tm-dir"></i>';
+      // A fresh element holds none of what shapeMarker last drew.
+      this.markerForm = null;
       this.marker = new maplibregl.Marker({
         element: el,
         // Explicit: the disc must sit on the coordinate, centred on the track.

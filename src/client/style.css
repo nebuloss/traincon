@@ -121,19 +121,23 @@ button { touch-action: manipulation; }
 /* ---------- deduced signal aspect ---------- */
 
 /*
- * The lamp. Small on purpose: it is an inference from where the other trains
- * are, not a reading off the signal, and it is always shown next to the word
- * "déduit" so it cannot be taken for a live feed.
+ * The signal head. Drawn as the real thing — a black cible on a mast, with
+ * the lit lenses in place — because a coloured dot said "stop" without saying
+ * which stop, and French practice turns on the difference between a sémaphore
+ * you may pass and a carré you may not. See components/SignalAspect.
+ *
+ * Still deliberately small, and still always beside the word "déduit": it is
+ * an inference from where the other trains are, not a reading off the signal.
  */
-.lamp {
-  flex: 0 0 auto; width: 15px; height: 15px; border-radius: 50%;
-  border: 2px solid rgba(0, 0, 0, .45);
-  box-shadow: inset 0 -2px 4px rgba(0, 0, 0, .35);
+.sig {
+  flex: 0 0 auto;
+  display: block; height: 40px; width: auto;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .4));
 }
-.lamp.green  { background: #23c55e; box-shadow: inset 0 -2px 4px rgba(0,0,0,.35), 0 0 7px #23c55e88; }
-.lamp.yellow { background: #eab308; box-shadow: inset 0 -2px 4px rgba(0,0,0,.35), 0 0 7px #eab30888; }
-.lamp.red    { background: #ef4444; box-shadow: inset 0 -2px 4px rgba(0,0,0,.35), 0 0 7px #ef444488; }
-.lamp.dark   { background: var(--dead); box-shadow: none; }
+.sig-wrap { flex: 0 0 auto; display: inline-flex; align-items: center; }
+/* In the map foot it stands beside the speed roundel, so it matches its height. */
+.map-aspect { flex: 0 0 auto; display: inline-flex; align-items: center; }
+.map-aspect .sig { height: 30px; }
 
 .ov-signal {
   display: flex; align-items: flex-start; gap: 10px;
@@ -141,7 +145,7 @@ button { touch-action: manipulation; }
   border: 1px solid var(--line); border-radius: 12px;
   background: var(--panel-2);
 }
-.ov-signal .lamp { margin-top: 2px; }
+.ov-signal .sig { margin-top: 1px; }
 .ov-signal-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 
 /* The honesty label, quiet but always there. */
@@ -819,8 +823,14 @@ i.sw.verylate { background: var(--verylate); } i.sw.cancelled { background: var(
  * Zoomed in, the train is drawn on the map itself — a polygon per car that
  * bends with the track (see core/TrainBody). The marker would then be a second
  * train sitting on the first, so it stands down while the body is drawn.
+ *
+ * Its children are hidden rather than the marker itself: MapLibre writes
+ * `style.opacity` straight onto the marker element to fade markers the terrain
+ * covers, and an inline style beats a class, so fading the root here did
+ * nothing at all. It only ever touches the root, so the children are safe.
  */
-.train-marker.is-bodied { opacity: 0; pointer-events: none; }
+.train-marker.is-bodied > * { display: none; }
+.train-marker.is-bodied { pointer-events: none; }
 
 .train-marker.is-stopped .tm-body { opacity: .82; }
 /* An interpolated position that is not on real track: say so by softening it. */

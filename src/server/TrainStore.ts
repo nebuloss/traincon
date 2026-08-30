@@ -564,7 +564,16 @@ export class TrainStore {
       // not available.
       (lat, lon) => this.blocks?.spacingNear(lat, lon) ?? 1800,
       this.signals
-        ? (lat, lon, bearing) => this.signals!.nextAhead(lat, lon, bearing)?.distanceM ?? null
+        ? (lat, lon, bearing) => {
+            const next = this.signals!.nextAhead(lat, lon, bearing);
+            if (!next) return null;
+            // CARRE is the absolute stop and shows two reds; S is the
+            // sémaphore, one red and a lit œilleton saying it may be passed.
+            return {
+              m: next.distanceM,
+              kind: next.signal.type === 'CARRE' ? ('carre' as const) : ('semaphore' as const),
+            };
+          }
         : undefined,
       this.signals ? (lat, lon) => this.signals!.tracksNear(lat, lon) : undefined,
     );
