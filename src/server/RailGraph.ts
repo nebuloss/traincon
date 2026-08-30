@@ -204,6 +204,27 @@ export class RailGraph {
   private readonly lon: number[] = [];
   /** Flattened triples: [nodeId, distKm, hours, …] */
   private readonly adj: number[][] = [];
+  /**
+   * Drop the least recently used paths until the cache is within budget.
+   *
+   * Map preserves insertion order and a hit re-inserts, so the first key is
+   * always the coldest.
+   */
+  private evict(): void {
+    while (
+      this.cachedPoints > this.pathPointBudget ||
+      this.pathCache.size > RailGraph.PATH_CACHE_MAX
+    ) {
+      const oldest = this.pathCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.cachedPoints -= this.pathCache.get(oldest)?.pts.length ?? 0;
+      this.pathCache.delete(oldest);
+    }
+    // A negative count would mean the bookkeeping had drifted; clamp rather
+    // than let it disable the budget silently.
+    if (this.cachedPoints < 0) this.cachedPoints = 0;
+  }
+
   /** What the path cache is holding, for the memory diagnostics. */
   get cacheStats(): { paths: number; points: number } {
     return { paths: this.pathCache.size, points: this.cachedPoints };
@@ -221,7 +242,22 @@ export class RailGraph {
    * least-recently-added; a cache hit re-inserts, keeping hot paths resident.
    */
   private readonly pathCache = new Map<string, RailPath | null>();
-  private static readonly PATH_CACHE_MAX = 2500;
+  /**
+   * What the path cache may hold, counted in vertices rather than paths.
+   *
+   * It used to cap the number of paths, at 2 500. That is the wrong unit: a
+   * suburban hop is a few dozen vertices and Bordeaux–Paris is thousands, so
+   * the same cap could mean 5 MB or 150 MB depending on which trains happened
+   * to run. Measured at 573 vertices per path, 2 500 paths is ~1.4 million
+   * vertices — about 110 MB against a 281 MB ceiling, in one structure. That
+   * is what exhausted the heap.
+   *
+   * Each vertex costs roughly 80 bytes: a two-element array for [lat, lon]
+   * plus one double each in cum, cumT and segV. 400 000 is therefore ~32 MB.
+   */
+  private readonly pathPointBudget = Number(process.env['RAIL_PATH_POINTS'] ?? 400_000);
+  /** Secondary guard, for a run of unusually short paths. */
+  private static readonly PATH_CACHE_MAX = 4000;
   /**
    * Vertices currently held by the cache.
    *
@@ -482,12 +518,7 @@ export class RailGraph {
     }
     this.pathCache.set(ck, result);
     this.cachedPoints += result?.pts.length ?? 0;
-    while (this.pathCache.size > RailGraph.PATH_CACHE_MAX) {
-      const oldest = this.pathCache.keys().next().value;
-      if (oldest === undefined) break;
-      this.cachedPoints -= this.pathCache.get(oldest)?.pts.length ?? 0;
-      this.pathCache.delete(oldest);
-    }
+    this.evict();
     return result;
   }
 
