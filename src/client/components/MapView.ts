@@ -180,6 +180,31 @@ export class MapView {
           },
         },
       );
+      // Platform numbers, from OSM's ref. Which platform a train is at is not
+      // published by anyone — GTFS has no such field, Navitia's platform_code
+      // is empty, and Carto Tchoo's own endpoint for it is called
+      // guess_my_platform and returns a confidence percentage — so these label
+      // the ground rather than the train. Knowing where platform 3 is still
+      // helps when the departure board tells you to go there.
+      this.map.addLayer({
+        id: 'osm-platform-refs',
+        type: 'symbol',
+        source: 'osmrail',
+        'source-layer': 'platforms',
+        minzoom: 16,
+        filter: ['has', 'ref'],
+        layout: {
+          'text-field': ['get', 'ref'],
+          'text-size': 11,
+          'text-font': ['Noto Sans Regular'],
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': Theme.token('fg'),
+          'text-halo-color': Theme.token('panel'),
+          'text-halo-width': 1.6,
+        },
+      });
     } catch {
       // A third-party tile server is a nicety, not a requirement.
     }
