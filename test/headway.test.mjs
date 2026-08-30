@@ -162,3 +162,70 @@ test('an unknown line falls back rather than failing', () => {
   assert.ok(idx.spacingFor('999999', 1, 2) > 0, 'a default block, not zero');
   assert.ok(idx.spacingFor(undefined, null, null) > 0);
 });
+
+
+// ── slowing for a signal ─────────────────────────────────────────────────────
+
+const { approachSpeed } = await import(path.join(ROOT, 'dist-server/server/Headway.js'));
+
+test('the approach follows the parabolic law', () => {
+  // v = sqrt(2·a·d) at 0.5 m/s²: 1800 m gives 42 m/s, about 152 km/h.
+  assert.ok(Math.abs(approachSpeed(1800, 300) - 152) < 2, `${approachSpeed(1800, 300)}`);
+  // Four times the distance, twice the speed — the signature of the law.
+  const near = approachSpeed(500, 300);
+  const far = approachSpeed(2000, 300);
+  assert.ok(Math.abs(far / near - 2) < 0.02, `${near} -> ${far}`);
+});
+
+test('a train slows the closer it gets', () => {
+  let last = Infinity;
+  for (const d of [4000, 3000, 2000, 1000, 500, 200, 50]) {
+    const v = approachSpeed(d, 300);
+    assert.ok(v < last, `${d} m allowed ${v}, not less than ${last}`);
+    last = v;
+  }
+});
+
+test('at the signal itself the train is stopped', () => {
+  assert.equal(approachSpeed(0, 300), 0);
+  assert.equal(approachSpeed(-500, 300), 0, 'past it, and certainly stopped');
+});
+
+test('a signal never licenses a train to go faster', () => {
+  // Ten kilometres of clear track does not entitle a 90 km/h train to 500.
+  assert.equal(approachSpeed(10_000, 90), 90);
+});
+
+test('coming off a restriction, speed returns quickly then gently', () => {
+  // A square root, so for each further kilometre of clearance the train gains
+  // less than it did for the last. Compared over equal steps — over doublings
+  // the absolute gain grows, which is the curve behaving, not misbehaving.
+  const early = approachSpeed(2000, 300) - approachSpeed(1000, 300);
+  const late = approachSpeed(4000, 300) - approachSpeed(3000, 300);
+  assert.ok(early > late, `gained ${early.toFixed(0)} then ${late.toFixed(0)} km/h per km`);
+});
+
+test('an approach to a restriction rather than a stop keeps that speed', () => {
+  // Slowing to 80 rather than to a stand.
+  assert.ok(approachSpeed(0, 300, 80) === 80, 'at the board, exactly the restriction');
+  assert.ok(approachSpeed(1000, 300, 80) > 80, 'and more before reaching it');
+});
+
+test('the reported allowance appears only when it bites', () => {
+  // Two blocks clear at 160 km/h: the braking curve permits more than the
+  // train is doing, so there is nothing to report.
+  const far = analyseTraffic(
+    [running('8540', 'L1', 0, 0.4), running('8542', 'L1', 8, 0.5)],
+    twoKm,
+  );
+  assert.equal(far.get('8540').allowedKmh, undefined);
+
+  // Closing to within a block and a half, it does bite.
+  const near = analyseTraffic(
+    [running('8540', 'L1', 0, 0.4), running('8542', 'L1', 2.4, 0.5)],
+    twoKm,
+  );
+  const t = near.get('8540');
+  assert.ok(t.allowedKmh < 160, `allowed ${t.allowedKmh} of 160`);
+  assert.ok(t.allowedKmh > 0);
+});

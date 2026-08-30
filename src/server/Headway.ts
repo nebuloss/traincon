@@ -59,6 +59,45 @@ export interface Traffic {
   gapM?: number;
   /** Metres this train was pushed back to stay clear of it. */
   pushedM?: number;
+  /**
+   * Speed the approach allows, km/h — present only when it is a restriction.
+   *
+   * Absent means the traffic ahead is not constraining this train, so its own
+   * speed stands.
+   */
+  allowedKmh?: number;
+}
+
+/**
+ * Service braking, m/s² — the same figure the line-speed profile uses, because
+ * it is the same train doing the same thing.
+ */
+const BRAKE_MS2 = 0.5;
+
+/**
+ * Speed a train may be doing this far from something it must stop at.
+ *
+ * The parabolic law, v² = 2·a·d, which is simply what a constant deceleration
+ * gives: to stop in d metres at a m/s² you may be doing no more than
+ * sqrt(2·a·d) right now. Approaching a signal at danger 1 800 m away that is
+ * 42 m/s, or about 150 km/h.
+ *
+ * The same expression covers coming *off* a restriction, because as the train
+ * ahead pulls away d grows and the permitted speed grows with it — a square
+ * root, so quickly at first and then gently, which is what letting a train
+ * back up to line speed looks like.
+ *
+ * @param distanceM  metres to the point that must be passed at `targetKmh`
+ * @param freeKmh    what the train would be doing with nothing in its way
+ * @param targetKmh  speed permitted at that point — zero for a stop signal
+ */
+export function approachSpeed(distanceM: number, freeKmh: number, targetKmh = 0): number {
+  if (!(distanceM > 0)) return Math.min(freeKmh, targetKmh);
+  const target = Math.max(0, targetKmh) / 3.6;
+  const allowed = Math.sqrt(target * target + 2 * BRAKE_MS2 * distanceM) * 3.6;
+  // Never faster than it was going to go anyway: a signal can only restrain a
+  // train, never licence it to exceed the line speed or its own timetable.
+  return Math.min(freeKmh, allowed);
 }
 
 /** Degrees of heading within which two trains count as going the same way. */
@@ -149,6 +188,19 @@ export function analyseTraffic(
         ahead: ahead.number,
         gapM: Math.round(gapKm * 1000),
       };
+
+      // The signal it is running towards protects the occupied block, so it
+      // stands one block behind the train ahead. That is what this train must
+      // be able to stop at.
+      const toRedM = (gapKm - blockKm) * 1000;
+      const freeKmh = pa.speedKmh || 0;
+      if (freeKmh > 0) {
+        const allowed = approachSpeed(toRedM, freeKmh);
+        // Only report it when it actually bites; otherwise the train is
+        // unaffected and saying so would be noise.
+        if (allowed < freeKmh - 1) traffic.allowedKmh = Math.round(allowed);
+      }
+
       // Inside a block it cannot be where it is drawn; push it back to the
       // boundary. Only ever backwards — moving it forward would invent
       // progress.
