@@ -15,6 +15,7 @@ import { aspectLamp } from './SignalAspect.ts';
 import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM } from './TrainIcon.ts';
 import { trainCars } from '../core/TrainBody.ts';
 import { outsideMiddle } from '../core/Viewport.ts';
+import { zoomForSpeed } from '../core/Framing.ts';
 import { ensureLivery, iconScale } from '../core/TrainArt.ts';
 import { distanceFraction } from '../../shared/motion.ts';
 import { Theme } from '../core/Theme.ts';
@@ -106,16 +107,13 @@ export class MapView {
   ) {}
 
   /**
-   * Zoom chosen from speed.
+   * Zoom chosen from speed, so that the train can be seen to move.
    *
-   * Zooming out as the train accelerates keeps the likely error inside the
-   * viewport instead of implying platform-level precision at 300 km/h — and a
-   * stopped train can be shown right down on its station.
+   * The rule, and why it is the apparent speed rather than the true one that
+   * decides, is in core/Framing.
    */
   static zoomForSpeed(kmh: number): number {
-    if (!kmh) return 13.5;
-    const z = 13 - Math.log2(Math.max(25, kmh) / 25) * 0.8;
-    return Math.max(9.8, Math.min(13.5, z));
+    return zoomForSpeed(kmh);
   }
 
   /** Build the map lazily; it measures zero if created while hidden. */
