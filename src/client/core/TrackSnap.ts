@@ -37,15 +37,9 @@
  * travel wins. That is deterministic, so it does not flicker, and it is what
  * the train is actually doing.
  *
- * Two things this deliberately does not model. Lines in Alsace-Moselle run on
- * the right — they were built between 1871 and 1918 when the territory was
- * German, and the junctions with the rest of the network have flyovers to
- * swap sides. And the LGVs run on the left even through that region, so the
- * exception is not simply geographic: it belongs to the line, not the place.
- * Getting it wrong there puts a train on the wrong track of a pair, four
- * metres out; guessing it from a bounding box would put high-speed trains on
- * the wrong track too, which is worse. So the rule is left-hand everywhere,
- * and this note is the record of what it costs.
+ * Which side that is, is not the same everywhere: Alsace-Moselle runs on the
+ * right. Deciding that is core/RunningSide's job, and the answer arrives here
+ * as `keepLeft`.
  *
  * The choice is made once for the whole train and then held, so noise in
  * either survey cannot push it across.
@@ -109,7 +103,7 @@ export interface Line {
 export const STICKY_M = 4;
 
 /**
- * How far onto the wrong side a track may be and still count as the left one.
+ * How far onto the wrong side a track may be and still count as the right one.
  *
  * It exists only so that a train sitting all but exactly on its own rails is
  * not judged to be on the other side of itself by a few centimetres of survey
@@ -129,7 +123,8 @@ export function snapToLine(lon: number, lat: number, line: Line): Snapped | null
  *
  * `bearing` is where the train is heading, in degrees from north; pass null
  * when it is not known and the check is skipped. `prefer` is the key of the
- * track it is already on, which wins ties and near-ties.
+ * track it is already on, which wins ties and near-ties. `keepLeft` is which
+ * side this bit of railway runs on — see core/RunningSide.
  */
 export function snapToTrack(
   lon: number,
@@ -138,8 +133,9 @@ export function snapToTrack(
   lines: readonly Line[],
   maxM: number = MAX_SNAP_M,
   prefer?: string | null,
+  keepLeft = true,
 ): (Snapped & { key: string }) | null {
-  const found = nearest(lon, lat, bearing, lines, maxM, prefer);
+  const found = nearest(lon, lat, bearing, lines, maxM, prefer, keepLeft);
   return found ? { ...found.hit, key: found.key } : null;
 }
 
@@ -151,6 +147,7 @@ function nearest(
   lines: readonly Line[],
   maxM: number,
   prefer?: string | null,
+  keepLeft = true,
 ): { hit: Snapped; key: string } | null {
   // Local flat-earth metres. Over the tens of metres in question the error is
   // far below the thing being measured.
@@ -158,19 +155,21 @@ function nearest(
   const px = lon * kx;
   const py = lat * M_PER_DEG;
 
-  // Two answers are kept: the best track on the left of the train, and the
-  // best of any. The left one wins if there is one — see the note above — and
-  // the other is there for single track, where there is no side to be on.
+  // Two answers are kept: the best track on the side this railway runs on,
+  // and the best of any. The first wins if there is one — see the note above
+  // — and the other is there for single track, where there is no side.
   let best: { hit: Snapped; key: string } | null = null;
   let bestScore = maxM;
-  let bestLeft: { hit: Snapped; key: string } | null = null;
-  let bestLeftScore = maxM;
+  let bestSide: { hit: Snapped; key: string } | null = null;
+  let bestSideScore = maxM;
 
-  // Left of the direction of travel, as a unit vector in (east, north).
-  // Heading north, left is west; heading east, left is north.
+  // The running side, as a unit vector in (east, north). Heading north, left
+  // is west; heading east, left is north. In Alsace-Moselle it is the other
+  // way about, which `keepLeft` carries.
   const rad = ((bearing ?? 0) * Math.PI) / 180;
-  const leftE = -Math.cos(rad);
-  const leftN = Math.sin(rad);
+  const hand = keepLeft ? 1 : -1;
+  const sideE = -Math.cos(rad) * hand;
+  const sideN = Math.sin(rad) * hand;
 
   for (const line of lines) {
     const pts = line.points;
@@ -199,7 +198,7 @@ function nearest(
       // Pruned against both answers, not just the overall best: the track on
       // the correct side is often no nearer than the one beside it, and
       // stopping at the first equally-good candidate would never see it.
-      if (score >= bestScore && score >= bestLeftScore) continue;
+      if (score >= bestScore && score >= bestSideScore) continue;
 
       // atan2(east, north), which is a compass bearing.
       let seg = (Math.atan2(dx, dy) * 180) / Math.PI;
@@ -229,13 +228,13 @@ function nearest(
       }
 
       // Which side of the train this track lies on.
-      const leftness = (fx - px) * leftE + (fy - py) * leftN;
-      if (bearing !== null && leftness > -SIDE_SLACK_M && score < bestLeftScore) {
-        bestLeftScore = score;
-        bestLeft = found;
+      const sideness = (fx - px) * sideE + (fy - py) * sideN;
+      if (bearing !== null && sideness > -SIDE_SLACK_M && score < bestSideScore) {
+        bestSideScore = score;
+        bestSide = found;
       }
     }
   }
 
-  return bestLeft ?? best;
+  return bestSide ?? best;
 }

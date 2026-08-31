@@ -17,6 +17,7 @@ import { trainCars } from '../core/TrainBody.ts';
 import { zoomForSpeed } from '../core/Framing.ts';
 import { MAX_SNAP_M, snapToLine, snapToTrack } from '../core/TrackSnap.ts';
 import type { Line, Point } from '../core/TrackSnap.ts';
+import { keepsLeft } from '../core/RunningSide.ts';
 import { ensureLivery, iconScale } from '../core/TrainArt.ts';
 import { distanceFraction } from '../../shared/motion.ts';
 import { Theme } from '../core/Theme.ts';
@@ -689,7 +690,11 @@ export class MapView {
           this.drawnKm = drawKm;
           const here = this.track.at(drawKm);
           if (here) {
-            const at = this.onSurveyedTrack(here.lon, here.lat, here.bearing);
+            // The line speed comes from the train rather than the drawn point:
+            // it is what says whether this is a high-speed line, and neither
+            // that nor the region changes over the few hundred metres between
+            // the reported position and the drawn one.
+            const at = this.onSurveyedTrack(here.lon, here.lat, here.bearing, p.limitKmh);
             this.marker.setLngLat(at);
             this.centreOnTrain(at);
 
@@ -949,7 +954,12 @@ export class MapView {
    * Declines rather than guesses: no nearby track, or none pointing the same
    * way, and the model's own answer stands.
    */
-  private onSurveyedTrack(lon: number, lat: number, bearing: number | null): [number, number] {
+  private onSurveyedTrack(
+    lon: number,
+    lat: number,
+    bearing: number | null,
+    limitKmh?: number | null,
+  ): [number, number] {
     const zoom = this.map?.getZoom() ?? 0;
     // Only where the rails are actually drawn thickly enough for the train to
     // be visibly beside them. Below that the correction is under a pixel and
@@ -963,7 +973,17 @@ export class MapView {
     // One choice for the whole train, biased towards the track it is already
     // on. Made here, at the front of the train, and then reused for every
     // vehicle behind it — see drawBody.
-    const hit = snapToTrack(lon, lat, bearing, this.nearbyTrack(lon, lat), MAX_SNAP_M, this.snappedTo);
+    // Which side of the line trains keep to here — left in France, right in
+    // Alsace-Moselle, and left again on the LGVs that cross it.
+    const hit = snapToTrack(
+      lon,
+      lat,
+      bearing,
+      this.nearbyTrack(lon, lat),
+      MAX_SNAP_M,
+      this.snappedTo,
+      keepsLeft(lon, lat, limitKmh),
+    );
     if (!hit) {
       this.chosenLine = null;
       this.snappedTo = null;
@@ -1028,6 +1048,7 @@ export class MapView {
       onLine?.lon ?? p.lon,
       onLine?.lat ?? p.lat,
       onLine?.bearing ?? p.bearing ?? null,
+      p.limitKmh,
     );
 
     if (!this.marker) {

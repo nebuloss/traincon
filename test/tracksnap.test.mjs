@@ -86,6 +86,22 @@ test('a single track is taken whichever way the train is going', () => {
   assert.equal(snapToTrack(...at(10, 0), 180, single).key, 'one');
 });
 
+test('where the region runs on the right, the train takes the other track', () => {
+  // Alsace-Moselle keeps right — see core/RunningSide. The rule is the same
+  // rule, with the side turned over, so a northbound train there takes the
+  // eastern rail rather than the western one.
+  assert.equal(snapToTrack(...at(0, 0), 0, double, MAX_SNAP_M, null, false).key, 'east');
+  assert.equal(snapToTrack(...at(0, 0), 180, double, MAX_SNAP_M, null, false).key, 'west');
+  // And the default is still left, so nothing else in France moves.
+  assert.equal(snapToTrack(...at(0, 0), 0, double).key, 'west');
+});
+
+test('the side still beats proximity when the region runs right', () => {
+  // The same guarantee as for left-hand running: the nearer rail is not the
+  // one the train is on.
+  assert.equal(snapToTrack(...at(-1.9, 0), 0, double, MAX_SNAP_M, null, false).key, 'east');
+});
+
 // ---------------------------------------------------------- staying put ---
 
 test('the train stays on the track it is already on, among those on its side', () => {
