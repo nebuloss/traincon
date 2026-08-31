@@ -248,21 +248,6 @@ test('the camera aims at where the train is drawn, not where it was reported', (
   assert.ok(checked >= 2, 'expected at least the framing and the follow paths');
 });
 
-test('the train is chased between refreshes, not only on one', () => {
-  // Without this it ran off the edge and stayed there until the next update.
-  const loop = src.slice(src.indexOf('const step = ()'), src.indexOf('private modelledKm'));
-  assert.match(loop, /this\.keepInSight\(/, 'from the animation loop');
-  assert.match(src, /this\.map\.on\('moveend'/, 'and once a gesture settles');
-});
-
-test('chasing the train never fights the user mid-gesture', () => {
-  // A pinch zooms about the fingers and so moves the centre; snapping it back
-  // on every frame makes zooming feel broken.
-  const keep = src.slice(src.indexOf('private keepInSight('));
-  assert.match(keep.slice(0, 400), /this\.map\.isMoving\(\)/, 'stands down while the map moves');
-  assert.match(keep.slice(0, 600), /outsideMiddle\(/, 'and only acts at the edge of the view');
-});
-
 test('the train is put on the rails that are drawn under it', () => {
   // The train is placed along SNCF Réseau's geometry; the track beneath it is
   // OpenStreetMap's. They mostly agree, but the SNCF vertices are sparse in
@@ -291,32 +276,89 @@ test('snapping is bounded, so it can run in the animation loop', () => {
   assert.equal([...body.matchAll(/nearbyTrack\(/g)].length, 1, 'one gather for the whole train');
 });
 
-test('the camera leads a fast train rather than chasing it', () => {
-  // Aiming at the present position lands every pan behind the train, and at
-  // 300 km/h and a close zoom that is 30 to 60 pixels each time — enough that
-  // it walks to the edge of the screen and out of view however often the
-  // camera chases. Reported exactly that way.
-  const fn = src.slice(src.indexOf('private keepInSight('), src.indexOf('private nearbyTrack('));
-  assert.match(fn, /leadPoint\(/, 'the aim must be led');
-  // The lead and the pan have to be the same figure, or the aim over- or
-  // under-shoots. Both are taken from the one variable so they cannot drift.
-  assert.match(fn, /leadPoint\([^)]*ms \/ 1000\)/, 'led by the length of the pan');
-  assert.match(fn, /duration: ms,/, 'and the pan lasts exactly that');
-  // And it needs the speed to lead by, which means being told it.
-  assert.match(src, /this\.keepInSight\(at, here\.bearing, kmh\)/, 'from the animation loop');
+
+test('the map is held on the train continuously, not once it reaches the side', () => {
+  // Waiting for the train to drift to the edge of a box and then easing after
+  // it meant the camera was always arriving where the train had been — and at
+  // 300 km/h it never caught up. Holding the centre every frame is both the
+  // behaviour asked for and less work: no easing, no box, no lead.
+  const loop = src.slice(src.indexOf('const step = ()'), src.indexOf('private modelledKm'));
+  assert.match(loop, /this\.centreOnTrain\(at\)/, 'centred from the animation loop');
+  assert.match(src, /this\.map\.setCenter\(at\)/, 'set outright, not eased');
+  // The machinery the old approach needed should be gone, not left lying about.
+  assert.ok(!/outsideMiddle|leadPoint|EASE_MS/.test(src), 'the box and the lead are obsolete');
+});
+
+test('a following map still lets go while a finger is on it', () => {
+  // Taking the map back from under a gesture is the one thing a following map
+  // must not do. The gesture ends and the next frame picks the train up again.
+  const fn = src.slice(src.indexOf('private centreOnTrain('), src.indexOf('private nearbyTrack('));
+  assert.match(fn, /this\.map\.isMoving\(\)/, 'stands down while the map is being moved');
+  assert.match(fn, /if \(!this\.following/, 'and only follows when asked to');
+  assert.match(src, /this\.map\.on\('moveend'/, 'and takes it back once the gesture settles');
+});
+
+test('the refresh does not drag the map away from where the loop holds it', () => {
+  // Both easing the centre on every server update and setting it every frame
+  // would have the two pulling against each other.
+  const follow = src.slice(src.indexOf('} else if (follow) {'), src.indexOf('this.drawMarker(t)'));
+  assert.match(follow, /if \(this\.animating\)/, 'the loop owns the centre while it runs');
+  assert.match(follow, /easeTo\(\{ zoom: want/, 'leaving only the zoom to the refresh');
 });
 
 test('reduced motion slows the train down, it does not stop it', () => {
   // A train's whereabouts is the content of this view, not decoration on it.
   // Refusing to advance it left a reader with that setting watching the train
-  // jump once a refresh and sit still in between, at every speed — which is
-  // the feature switched off, not toned down.
+  // jump once a refresh and sit still in between, at every speed.
   const start = src.slice(src.indexOf('private startDeadReckoning('), src.indexOf('const step = ()'));
   const bail = /if \(![^)]*\|\| this\.stopKm\.length < 2\) \{/.exec(start);
   assert.ok(bail, 'the guard should still be there');
   assert.ok(!/reduced/.test(bail[0]), 'but not stopping on reduced motion');
-  // It still asks, because it should step rather than glide.
   assert.match(src, /prefers-reduced-motion/, 'the setting is still honoured');
   assert.match(src, /this\.reduced \? 500 : 80/, 'at a calmer cadence');
-  assert.match(src, /this\.reduced \? 0 : MapView\.EASE_MS/, 'and without the camera gliding');
+});
+
+test('the work done per frame is bounded, because phones run this too', () => {
+  // The expensive thing here is walking the tile features to find track to
+  // snap to. It is cached, cut to a box around the train, and not done at all
+  // until the rails are drawn thickly enough for the correction to show.
+  const fn = src.slice(src.indexOf('private onSurveyedTrack('), src.indexOf('private stopAnimation('));
+  assert.match(fn, /if \(zoom < 14\) return \[lon, lat\]/, 'skipped until it would be visible');
+  const gather = src.slice(src.indexOf('private nearbyTrack('), src.indexOf('private onSurveyedTrack('));
+  assert.match(gather, /now - this\.railSegsAt < 4000/, 'and cached between gathers');
+});
+
+test('the cheap work runs every frame and the expensive work does not', () => {
+  // The map pans with the train now, and a pan stepped twelve times a second
+  // judders. So reading the model, moving the marker and holding the centre
+  // run at the display's rate, while rebuilding the vehicles — which re-tiles
+  // the source in a worker — stays throttled. Doing all of it at 12 Hz was
+  // right when only a marker moved on a still map; it is not any more.
+  const loop = src.slice(src.indexOf('const step = ()'), src.indexOf('private modelledKm'));
+  const move = loop.indexOf('this.centreOnTrain(at)');
+  const body = loop.indexOf('this.drawBody(t, drawKm)');
+  assert.ok(move >= 0 && body >= 0, 'both should be in the loop');
+  assert.ok(move < body, 'the centre is held before the geometry is rebuilt');
+  assert.match(loop, /frameAt - lastBody >= BODY_MS/, 'the geometry is throttled');
+  assert.match(src, /const MOVE_MS = this\.reduced \? 500 : 0/, 'the movement is not');
+});
+
+test('nothing is looked up in the DOM on every frame', () => {
+  // Both of these used to be queried twelve times a second for an element
+  // that never changes.
+  const loop = src.slice(src.indexOf('const step = ()'), src.indexOf('private modelledKm'));
+  assert.ok(!/getElementById/.test(loop), 'the panel is resolved once');
+  assert.ok(!/querySelector/.test(loop), 'and so is the direction pointer');
+  const setup = src.slice(src.indexOf('const BODY_MS'), src.indexOf('const step = ()'));
+  assert.match(setup, /const panel = document\.getElementById/, 'hoisted out of the loop');
+  assert.match(setup, /const dir = this\.marker\?\.getElement/);
+});
+
+test('style and layout are only touched when something moved', () => {
+  // Writing the same transform, or re-setting a layout property, costs a
+  // recalculation for no change on screen.
+  const loop = src.slice(src.indexOf('const step = ()'), src.indexOf('private modelledKm'));
+  assert.match(loop, /Math\.abs\(here\.bearing - lastBearing\) > 0\.5/, 'the pointer only turns when the train does');
+  const body = src.slice(src.indexOf('private drawBody('), src.indexOf('private stopAnimation('));
+  assert.match(body, /this\.iconScale === null \|\| Math\.abs\(scale - this\.iconScale\)/, 'the icon scale only when the zoom moves');
 });

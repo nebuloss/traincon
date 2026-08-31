@@ -14,7 +14,6 @@ import { Track } from '../core/Track.ts';
 import { aspectLamp } from './SignalAspect.ts';
 import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM } from './TrainIcon.ts';
 import { trainCars } from '../core/TrainBody.ts';
-import { leadPoint, outsideMiddle } from '../core/Viewport.ts';
 import { zoomForSpeed } from '../core/Framing.ts';
 import { MAX_SNAP_M, snapToTrack, type Point } from '../core/TrackSnap.ts';
 import { ensureLivery, iconScale } from '../core/TrainArt.ts';
@@ -44,6 +43,7 @@ interface MapLike {
   removeSource(id: string): void;
   setStyle(url: string): void;
   easeTo(o: unknown): void;
+  setCenter(c: [number, number]): void;
   fitBounds(b: unknown, o: unknown): void;
   getZoom(): number;
   project(lngLat: [number, number]): { x: number; y: number };
@@ -93,13 +93,6 @@ export class MapView {
    */
   private reduced = false;
   /**
-   * How long the camera takes to pan after the train.
-   *
-   * Long enough to read as a glide rather than a jump, and the same figure the
-   * aim is led by — see keepInSight.
-   */
-  private static readonly EASE_MS = 900;
-  /**
    * Surveyed track near the train, as individual segments — see core/TrackSnap.
    *
    * Cut down to the train's neighbourhood rather than kept for the whole
@@ -109,6 +102,8 @@ export class MapView {
    * track that is a kilometre away.
    */
   private railSegs: Point[][] = [];
+  /** The icon scale last given to the layer, so it is only set when it moves. */
+  private iconScale: number | null = null;
   /** Where and when that was gathered, so it is not re-queried per frame. */
   private railSegsAt = 0;
   private railSegsNear: Point | null = null;
@@ -177,11 +172,11 @@ export class MapView {
     // end up off to one side or off the screen entirely. Once the movement
     // settles, bring it back — this also covers a stopped train, which runs
     // no animation loop to notice for itself.
+    // Once a gesture settles, take the train back. A stopped train runs no
+    // animation loop, so without this the view would stay where it was left.
     this.map.on('moveend', () => {
       const at = this.drawnPoint();
-      if (!at) return;
-      const here = this.drawnKm !== null ? this.track?.at(this.drawnKm) : null;
-      this.keepInSight(at, here?.bearing ?? null, this.drawn?.position.speedKmh ?? 0);
+      if (at) this.centreOnTrain(at);
     });
     await new Promise<void>((r) => this.map!.on('load', () => r()));
     this.addRailLayers();
@@ -564,11 +559,19 @@ export class MapView {
       const want = MapView.zoomForSpeed(p.speedKmh);
       const cur = this.map.getZoom();
       const auto = Math.abs(cur - (this.lastAutoZoom ?? cur)) < 0.35;
-      this.map.easeTo({
-        center: this.drawnPoint() ?? [p.lon, p.lat],
-        zoom: auto ? want : cur,
-        duration: 900,
-      });
+      // While the loop is running it is already holding the train in the
+      // middle of the view, frame by frame. Easing the centre here as well
+      // would drag the map away from where the next frame puts it back, so
+      // only the zoom is touched.
+      if (this.animating) {
+        if (auto && Math.abs(cur - want) > 0.01) this.map.easeTo({ zoom: want, duration: 900 });
+      } else {
+        this.map.easeTo({
+          center: this.drawnPoint() ?? [p.lon, p.lat],
+          zoom: auto ? want : cur,
+          duration: 900,
+        });
+      }
       if (auto) this.lastAutoZoom = want;
     }
 
@@ -611,15 +614,30 @@ export class MapView {
 
     this.animating = true;
 
-    // Twelve updates a second. A train at 300 km/h covers 7 m between them,
-    // which is under a pixel at the zooms this view uses, so the extra frames
-    // a 60 Hz loop would draw are repaints nobody can see.
+    // The frame does two quite different amounts of work, so it is split.
     //
-    // Twice a second when less movement has been asked for: enough that the
-    // train is never far out of date, few enough that it steps rather than
-    // glides.
-    const MIN_GAP_MS = this.reduced ? 500 : 80;
-    let lastDrawn = 0;
+    // Cheap, every frame: read the model, move the marker, hold the centre.
+    // This is what has to run at the display's own rate — the map pans with
+    // the train now, and a pan stepped twelve times a second judders. All of
+    // it is arithmetic and two setters.
+    //
+    // Expensive, a few times a second: rebuilding the vehicles and pushing
+    // them through setData, which re-tiles the source in a worker, plus the
+    // icon-size layout property and the walk over tile features to find track
+    // to snap to. None of that is worth doing per frame — at these speeds the
+    // train moves well under a metre between them.
+    //
+    // Under reduced motion both drop to twice a second: the position stays
+    // current, and it steps rather than glides, which is what was asked for.
+    const BODY_MS = this.reduced ? 500 : 80;
+    const MOVE_MS = this.reduced ? 500 : 0;
+    let lastBody = 0;
+    let lastMove = 0;
+
+    // Looked up once rather than on every frame.
+    const panel = document.getElementById('mpanel-carte');
+    const dir = this.marker?.getElement().querySelector<HTMLElement>('.tm-dir') ?? null;
+    let lastBearing: number | null = null;
 
     const step = (): void => {
       if (!this.animating || !this.track || !this.marker) return;
@@ -627,30 +645,39 @@ export class MapView {
       // Stop when the map is not on screen. The modal keeps its panels in the
       // DOM when you switch tab, so without this the loop would run on for as
       // long as the modal stayed open.
-      if (!document.getElementById('mpanel-carte')?.classList.contains('active')) {
+      if (!panel?.classList.contains('active')) {
         this.stopAnimation();
         return;
       }
 
       const frameAt = performance.now();
-      if (frameAt - lastDrawn >= MIN_GAP_MS) {
-        const sinceLast = lastDrawn === 0 ? MIN_GAP_MS : frameAt - lastDrawn;
-        lastDrawn = frameAt;
+      if (frameAt - lastMove >= MOVE_MS) {
+        const sinceLast = lastMove === 0 ? 16 : frameAt - lastMove;
+        lastMove = frameAt;
         const km = this.modelledKm(t, Date.now() / 1000);
         if (km !== null) {
           // Corrections are absorbed by adjusting the drawn speed, so the
           // train never jumps and never reverses — it just runs a little fast
           // or a little slow until it agrees with the model again.
           const drawKm = this.reckoner.follow(km, kmh, sinceLast);
+          this.drawnKm = drawKm;
           const here = this.track.at(drawKm);
-          this.drawBody(t, drawKm);
           if (here) {
             const at = this.onSurveyedTrack(here.lon, here.lat, here.bearing);
             this.marker.setLngLat(at);
-            this.keepInSight(at, here.bearing, kmh);
-            const dir = this.marker.getElement().querySelector<HTMLElement>('.tm-dir');
-            if (dir) {
+            this.centreOnTrain(at);
+
+            // The pointer only turns when the train does, which on a straight
+            // line is hardly ever. Writing the same transform every frame
+            // costs a style recalculation for nothing.
+            if (dir && (lastBearing === null || Math.abs(here.bearing - lastBearing) > 0.5)) {
+              lastBearing = here.bearing;
               dir.style.transform = `rotate(${here.bearing}deg) translateY(calc(-1 * var(--tm-orbit)))`;
+            }
+
+            if (frameAt - lastBody >= BODY_MS) {
+              lastBody = frameAt;
+              this.drawBody(t, drawKm);
             }
           }
         }
@@ -753,7 +780,14 @@ export class MapView {
 
     const here = this.track!.at(km!);
     const mpp = metresPerPixel(zoom, here?.lat ?? 47);
-    this.map.setLayoutProperty('train-cars', 'icon-size', iconScale(mpp));
+    // Only when it has actually changed. Setting a layout property re-lays
+    // out every symbol in the layer, and the scale only moves when the zoom
+    // does — not on the frames in between, which is most of them.
+    const scale = iconScale(mpp);
+    if (this.iconScale === null || Math.abs(scale - this.iconScale) > this.iconScale * 0.002) {
+      this.iconScale = scale;
+      this.map.setLayoutProperty('train-cars', 'icon-size', scale);
+    }
     const cars = trainCars(this.track!, km!, trainLengthM(t), t.family, livery, 24);
     // Each vehicle onto the rails drawn under it, and turned to match them.
     // Done per vehicle rather than for the train as a whole: that is what lays
@@ -778,31 +812,16 @@ export class MapView {
   /**
    * Pan after the train when it is about to leave the view.
    *
-   * The rule for when is in core/Viewport. Beyond it, this never acts while
-   * the map is already moving, which covers both the user's own gestures and
-   * the easing this itself starts.
+   * Never while the map is already moving, which is how a gesture keeps hold
+   * of it.
    */
-  private keepInSight(at: [number, number], bearing: number | null, kmh: number): void {
-    if (!this.following || !this.map || this.map.isMoving()) return;
-    const box = this.map.getContainer();
-    const w = box.clientWidth;
-    const h = box.clientHeight;
-    if (!w || !h) return;
-
-    const p = this.map.project(at);
-    if (!outsideMiddle(p.x, p.y, w, h)) return;
-
-    // Aimed where the train will be when the pan finishes, not where it is
-    // now. A TGV at the zoom someone uses to watch one covers 30 to 60 pixels
-    // during the pan, so aiming at the present position lands the camera
-    // behind it every time — and it walks off the edge of the screen however
-    // often the camera chases. Leading by the length of the pan cancels that
-    // exactly.
-    const ms = this.reduced ? 0 : MapView.EASE_MS;
-    this.map.easeTo({
-      center: leadPoint(at[0], at[1], bearing, kmh, ms / 1000),
-      duration: ms,
-    });
+  private centreOnTrain(at: [number, number]): void {
+    if (!this.following || !this.map) return;
+    // Not while the reader is moving the map themselves: taking it back from
+    // under a finger is the one thing a following map must not do. Their own
+    // gesture ends, and the next frame picks the train up again.
+    if (this.map.isMoving()) return;
+    this.map.setCenter(at);
   }
 
   /**
@@ -866,9 +885,11 @@ export class MapView {
    */
   private onSurveyedTrack(lon: number, lat: number, bearing: number | null): [number, number] {
     const zoom = this.map?.getZoom() ?? 0;
-    // The tracks are only drawn — and only worth snapping to — close in. The
-    // layer itself starts at 12.5.
-    if (zoom < 13) return [lon, lat];
+    // Only where the rails are actually drawn thickly enough for the train to
+    // be visibly beside them. Below that the correction is under a pixel and
+    // not worth walking the tile features for — which matters on a phone,
+    // where that walk is the most expensive thing this view does.
+    if (zoom < 14) return [lon, lat];
     const hit = snapToTrack(lon, lat, bearing, this.nearbyTrack(lon, lat), MAX_SNAP_M);
     return hit ? [hit.lon, hit.lat] : [lon, lat];
   }
