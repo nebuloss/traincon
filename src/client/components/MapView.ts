@@ -44,6 +44,7 @@ interface MapLike {
   setStyle(url: string): void;
   easeTo(o: unknown): void;
   setCenter(c: [number, number]): void;
+  getCenter(): { lng: number; lat: number };
   fitBounds(b: unknown, o: unknown): void;
   getZoom(): number;
   project(lngLat: [number, number]): { x: number; y: number };
@@ -102,6 +103,16 @@ export class MapView {
    * track that is a kilometre away.
    */
   private railSegs: Point[][] = [];
+  /**
+   * True while this is the one moving the map.
+   *
+   * setCenter fires movestart, move and moveend synchronously, inside the
+   * call. The moveend handler centres on the train, so without this it
+   * centres, which fires moveend, which centres... until the stack runs out.
+   * That is exactly what it did: a RangeError out of MapLibre's handler
+   * manager the moment a train was followed.
+   */
+  private centring = false;
   /** The icon scale last given to the layer, so it is only set when it moves. */
   private iconScale: number | null = null;
   /** Where and when that was gathered, so it is not re-queried per frame. */
@@ -817,11 +828,26 @@ export class MapView {
    */
   private centreOnTrain(at: [number, number]): void {
     if (!this.following || !this.map) return;
+    // Not re-entrantly: see `centring`.
+    if (this.centring) return;
     // Not while the reader is moving the map themselves: taking it back from
     // under a finger is the one thing a following map must not do. Their own
     // gesture ends, and the next frame picks the train up again.
     if (this.map.isMoving()) return;
-    this.map.setCenter(at);
+
+    // Nothing at all when it is already there. Every setCenter fires a round
+    // of move events whether the map needed to move or not, and at sixty
+    // frames a second that is a great deal of event traffic for a train that
+    // has not gone anywhere — a stopped one, most of all.
+    const now = this.map.getCenter();
+    if (Math.abs(now.lng - at[0]) < 1e-7 && Math.abs(now.lat - at[1]) < 1e-7) return;
+
+    this.centring = true;
+    try {
+      this.map.setCenter(at);
+    } finally {
+      this.centring = false;
+    }
   }
 
   /**
