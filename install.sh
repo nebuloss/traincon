@@ -7,6 +7,9 @@
 # Usage, as root:
 #   curl -fsSL https://raw.githubusercontent.com/nebuloss/traincon/main/install.sh | sh
 #
+# A minimal Alpine has wget but not curl, so there:
+#   wget -qO- https://raw.githubusercontent.com/nebuloss/traincon/main/install.sh | sh
+#
 # With an optional SNCF API key (disruption reasons, station boards):
 #   curl -fsSL .../install.sh | SNCF_API_KEY=xxxx sh
 #

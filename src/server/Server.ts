@@ -84,7 +84,19 @@ export class ApiServer {
   ) {
     this.registerRoutes();
     this.server = createServer((req, res) => {
-      void this.handle(req, res);
+      // Nothing a request does may take the process down. `handle` is async,
+      // so a throw inside it becomes a rejected promise, and an unhandled
+      // rejection ends Node — a single malformed request would stop the
+      // server for everyone. Found exactly that way: a GET of `//` crashed it.
+      this.handle(req, res).catch((err) => {
+        console.error('request failed', err);
+        if (!res.headersSent) {
+          res.writeHead(500, { 'content-type': 'application/json' });
+          res.end('{"error":"internal"}');
+        } else {
+          res.end();
+        }
+      });
     });
   }
 
@@ -213,7 +225,17 @@ export class ApiServer {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+    // The request line is whatever the client sent, and not all of it parses:
+    // `//` is read as a protocol-relative URL with an empty host and throws.
+    // This used to sit outside the try below, so such a request was fatal.
+    let url: URL;
+    try {
+      url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+    } catch {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end('{"error":"bad request"}');
+      return;
+    }
     const p = url.pathname;
 
     try {

@@ -14,6 +14,12 @@ are all open data.
 curl -fsSL https://raw.githubusercontent.com/nebuloss/traincon/main/install.sh | sh
 ```
 
+A minimal Alpine has `wget` but not `curl`, so there it is:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/nebuloss/traincon/main/install.sh | sh
+```
+
 Interface in French and English, light and dark themes, mobile-first.
 
 ## What it does
@@ -60,9 +66,16 @@ left a platform.
 # as root, on the host that will serve it
 curl -fsSL https://raw.githubusercontent.com/nebuloss/traincon/main/install.sh | sh
 
+# a minimal Alpine ships wget but not curl
+wget -qO- https://raw.githubusercontent.com/nebuloss/traincon/main/install.sh | sh
+
 # with an optional SNCF API key
 curl -fsSL .../install.sh | SNCF_API_KEY=xxxx sh
 ```
+
+Nothing else needs installing first: the script fetches Node, the application,
+the rail geometry and the signal positions itself. Verified from a bare Alpine
+container — see `docs/clean-install.md`.
 
 Installs to `/opt/traincon`, runs as a service (systemd or OpenRC), listens on
 port 3000. Re-run the same command to update — `data/` is preserved so the
