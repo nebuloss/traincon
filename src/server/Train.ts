@@ -10,6 +10,7 @@
 import { bearing, greatCircle, haversine, type LatLon } from './geo.ts';
 import { RailGraph, type RailPath } from './RailGraph.ts';
 import { serviceMeta } from './GtfsStatic.ts';
+import { plausibleSpeed } from '../shared/stock.ts';
 import type { RawTrain } from './FeedClient.ts';
 import type {
   Call,
@@ -202,10 +203,17 @@ export class Train {
       let speedKmh = 0;
       if (basis === 'between' && legHours > 0) {
         const nominal = pt.nominalHours;
-        speedKmh =
+        const scaled =
           nominal && nominal > 0 && pt.modelKmh != null
-            ? Math.round(pt.modelKmh * (nominal / legHours))
-            : Math.round(railPath.total / legHours);
+            ? pt.modelKmh * (nominal / legHours)
+            : railPath.total / legHours;
+        // The scaling has no ceiling of its own: a train on a tighter schedule
+        // than the nominal profile assumes scales straight past the line's
+        // limit and past what the stock can do. A TER came out at 266 km/h on
+        // a line limited to 220. Neither ceiling makes the estimate more
+        // accurate — something in the timetable is odd when this bites — but
+        // it stops it claiming what cannot have happened.
+        speedKmh = Math.round(plausibleSpeed(scaled, this.family, pt.limitKmh));
       }
 
       return {
@@ -216,7 +224,10 @@ export class Train {
         legKm: Math.round(railPath.total * 10) / 10,
         distKm: Math.round(pt.distKm * 10) / 10,
         speedKmh,
-        avgKmh: legHours > 0 ? Math.round(railPath.total / legHours) : 0,
+        avgKmh:
+        legHours > 0
+          ? Math.round(plausibleSpeed(railPath.total / legHours, this.family, pt.limitKmh))
+          : 0,
         limitKmh: pt.limitKmh,
         geometry: 'rail',
         quality: {
@@ -242,7 +253,10 @@ export class Train {
       lon: pt.lon,
       bearing: bearing(a, b),
       legKm: Math.round(legKm),
-      speedKmh: basis === 'between' && span > 0 ? Math.round((legKm / span) * 3600) : 0,
+      speedKmh:
+        basis === 'between' && span > 0
+          ? Math.round(plausibleSpeed((legKm / span) * 3600, this.family))
+          : 0,
       geometry: 'direct',
       quality: {
         method: 'great_circle',
