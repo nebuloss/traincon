@@ -603,6 +603,9 @@ button.primary:active { transform: translateY(1px); }
 @media (prefers-reduced-motion: reduce) {
   .tl-fill, .tl-train { transition: none; }
   .tl-train.at-stop { animation: none; }
+  /* The train on the map still moves — its position is the content here, not
+     decoration — but it steps rather than glides. See MapView.reduced. */
+  .train-marker .tm-dir, .train-marker .tm-body { transition: none; }
 }
 
 /* ---------- modal / bottom sheet ---------- */

@@ -298,10 +298,25 @@ test('the camera leads a fast train rather than chasing it', () => {
   // camera chases. Reported exactly that way.
   const fn = src.slice(src.indexOf('private keepInSight('), src.indexOf('private nearbyTrack('));
   assert.match(fn, /leadPoint\(/, 'the aim must be led');
-  assert.match(fn, /EASE_MS \/ 1000/, 'and led by the length of the pan');
-  // The two have to be the same figure, or the lead over- or under-shoots.
-  const dur = /duration: MapView\.EASE_MS/.test(fn);
-  assert.ok(dur, 'the pan should last exactly what the lead assumes');
+  // The lead and the pan have to be the same figure, or the aim over- or
+  // under-shoots. Both are taken from the one variable so they cannot drift.
+  assert.match(fn, /leadPoint\([^)]*ms \/ 1000\)/, 'led by the length of the pan');
+  assert.match(fn, /duration: ms,/, 'and the pan lasts exactly that');
   // And it needs the speed to lead by, which means being told it.
   assert.match(src, /this\.keepInSight\(at, here\.bearing, kmh\)/, 'from the animation loop');
+});
+
+test('reduced motion slows the train down, it does not stop it', () => {
+  // A train's whereabouts is the content of this view, not decoration on it.
+  // Refusing to advance it left a reader with that setting watching the train
+  // jump once a refresh and sit still in between, at every speed — which is
+  // the feature switched off, not toned down.
+  const start = src.slice(src.indexOf('private startDeadReckoning('), src.indexOf('const step = ()'));
+  const bail = /if \(![^)]*\|\| this\.stopKm\.length < 2\) \{/.exec(start);
+  assert.ok(bail, 'the guard should still be there');
+  assert.ok(!/reduced/.test(bail[0]), 'but not stopping on reduced motion');
+  // It still asks, because it should step rather than glide.
+  assert.match(src, /prefers-reduced-motion/, 'the setting is still honoured');
+  assert.match(src, /this\.reduced \? 500 : 80/, 'at a calmer cadence');
+  assert.match(src, /this\.reduced \? 0 : MapView\.EASE_MS/, 'and without the camera gliding');
 });

@@ -83,6 +83,16 @@ export class MapView {
   /** Whether the view is meant to keep the train in sight. */
   private following = false;
   /**
+   * Whether the reader has asked for less movement.
+   *
+   * It does not mean "withhold the position". A train's whereabouts is the
+   * content of this view, not decoration on it, and freezing it turns the
+   * feature off. What the setting is asking for is the absence of gratuitous
+   * motion, so the position is still kept up to date — less often, and
+   * without gliding — while the easing and the transitions go.
+   */
+  private reduced = false;
+  /**
    * How long the camera takes to pan after the train.
    *
    * Long enough to read as a glide rather than a jump, and the same figure the
@@ -569,15 +579,22 @@ export class MapView {
   /**
    * Begin advancing the marker from the position just received.
    *
-   * Stopped, off-track or reduced-motion: nothing to animate, and the marker
-   * stays exactly where the server put it.
+   * Stopped or off-track there is nothing to advance, and the marker stays
+   * exactly where the server put it.
+   *
+   * Reduced motion used to stop it here too, which was a mistake: it meant a
+   * reader with that setting saw the train jump once a refresh and sit still
+   * in between, at every speed, however fast it was really going. The
+   * position is information. What that setting asks for is the absence of
+   * gratuitous movement, so the loop still runs — slower, and without any
+   * gliding — rather than not at all.
    */
   private startDeadReckoning(t: TrainDTO): void {
     this.stopAnimation();
 
     const p = t.position;
     const kmh = p.speedKmh ?? 0;
-    const reduced =
+    this.reduced =
       typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     this.showSpeed(kmh, p.limitKmh);
@@ -587,7 +604,7 @@ export class MapView {
     // uses for the position there, and the marker renders dashed to say so —
     // whereas a train that simply stops moving for half its journey reads as
     // broken.
-    if (!this.track || !kmh || reduced || this.stopKm.length < 2) {
+    if (!this.track || !kmh || this.stopKm.length < 2) {
       this.reckoner.reset();
       return;
     }
@@ -597,7 +614,11 @@ export class MapView {
     // Twelve updates a second. A train at 300 km/h covers 7 m between them,
     // which is under a pixel at the zooms this view uses, so the extra frames
     // a 60 Hz loop would draw are repaints nobody can see.
-    const MIN_GAP_MS = 80;
+    //
+    // Twice a second when less movement has been asked for: enough that the
+    // train is never far out of date, few enough that it steps rather than
+    // glides.
+    const MIN_GAP_MS = this.reduced ? 500 : 80;
     let lastDrawn = 0;
 
     const step = (): void => {
@@ -777,9 +798,10 @@ export class MapView {
     // behind it every time — and it walks off the edge of the screen however
     // often the camera chases. Leading by the length of the pan cancels that
     // exactly.
+    const ms = this.reduced ? 0 : MapView.EASE_MS;
     this.map.easeTo({
-      center: leadPoint(at[0], at[1], bearing, kmh, MapView.EASE_MS / 1000),
-      duration: MapView.EASE_MS,
+      center: leadPoint(at[0], at[1], bearing, kmh, ms / 1000),
+      duration: ms,
     });
   }
 
