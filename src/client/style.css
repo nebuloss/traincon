@@ -792,6 +792,9 @@ button.primary:active { transform: translateY(1px); }
 }
 .map-modes button.active { background: var(--accent); color: var(--on-accent); }
 .map-legend-inline i.sw { margin-left: 8px; }
+/* The palmarès filter borrows the map's segmented control, which is already
+   the shape this application uses for "one of these". */
+.worst-filter { display: inline-flex; margin: 0 0 10px; }
 .m-panel .disclaimer { flex: 0 0 auto; padding: 0 16px 14px; margin-top: 6px; }
 #mpanel-carte { overflow: hidden; }   /* the map handles its own gestures */
 

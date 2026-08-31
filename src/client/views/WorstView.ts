@@ -8,6 +8,11 @@
  * Trains stay on the board after they have finished running and left the feed,
  * so this is a record of the day rather than a second live list; a row still
  * in the feed is marked, because only those have a position to watch.
+ *
+ * That record is the point, but it buries what is happening now: by the
+ * evening the worst delays are mostly trains that finished hours ago, and a
+ * reader wanting to know what is late *at the moment* had to read past them.
+ * Hence the filter — the whole day, or only the trains still running.
  */
 
 import { Format } from '../core/Format.ts';
@@ -15,13 +20,34 @@ import { tr } from '../core/I18n.ts';
 import { trainRow } from '../components/TrainRow.ts';
 import type { Api } from '../core/Api.ts';
 import type { Bookmarks } from '../core/Bookmarks.ts';
+import { Prefs } from '../core/Cache.ts';
+import { POOL, pickShown } from '../core/WorstBoard.ts';
+import type { WorstFilter } from '../core/WorstBoard.ts';
 import type { WorstTrainDTO } from '../../shared/types.ts';
 
 export class WorstView {
+  private filter: WorstFilter = Prefs.get<WorstFilter>('worstFilter', 'all');
+
   constructor(
     private readonly api: Api,
     private readonly bookmarks: Bookmarks,
   ) {}
+
+  /** Switch between the whole day and the trains still running. */
+  setFilter(filter: WorstFilter): void {
+    this.filter = filter;
+    Prefs.set('worstFilter', filter);
+    for (const b of document.querySelectorAll<HTMLElement>('[data-worstfilter]')) {
+      const on = b.dataset['worstfilter'] === filter;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+  }
+
+  /** Reflect the stored choice in the markup, which starts on "all". */
+  restoreFilter(): void {
+    this.setFilter(this.filter);
+  }
 
   /** The badge for a row's state, or none when there is nothing to add. */
   private static tag(status: WorstTrainDTO['status']): {
@@ -63,7 +89,7 @@ export class WorstView {
 
     let board;
     try {
-      board = await this.api.worst(25);
+      board = await this.api.worst(POOL);
     } catch (e) {
       list.innerHTML = `<li class="hint">${Format.esc(
         tr('worst.failed', { error: (e as Error).message }),
@@ -71,14 +97,20 @@ export class WorstView {
       return;
     }
 
-    if (!board.trains.length) {
+    const shown = pickShown(board.trains, this.filter);
+
+    if (!shown.length) {
       // Genuinely good news, and worth saying so rather than showing a blank.
-      list.innerHTML = `<li class="empty-row">${Format.esc(tr('worst.empty'))}</li>`;
+      // Which good news it is depends on what was asked for.
+      const empty = this.filter === 'live' ? 'worst.emptyLive' : 'worst.empty';
+      list.innerHTML = `<li class="empty-row">${Format.esc(tr(empty))}</li>`;
       if (note) note.textContent = '';
       return;
     }
 
-    list.innerHTML = board.trains.map((r, i) => this.row(r, i + 1)).join('');
+    // Ranked within what is shown: on the live board, first place is the worst
+    // delay running now, which is the question that board answers.
+    list.innerHTML = shown.map((r, i) => this.row(r, i + 1)).join('');
 
     if (note) {
       // Without a key there is no cause anywhere on the page; say why once

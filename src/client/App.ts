@@ -20,6 +20,7 @@ import { MapView, type MapMode } from './components/MapView.ts';
 import { TrainModal, type ModalTab } from './components/TrainModal.ts';
 import { SearchView } from './views/SearchView.ts';
 import { WorstView } from './views/WorstView.ts';
+import type { WorstFilter } from './core/WorstBoard.ts';
 import { WatchView } from './views/WatchView.ts';
 
 const REFRESH_MS = 30_000;
@@ -355,6 +356,16 @@ export class App {
       return;
     }
 
+    const worstFilter = target.closest<HTMLElement>('[data-worstfilter]');
+    if (worstFilter) {
+      // The board is a record of the whole day, which by the evening is mostly
+      // trains that finished hours ago. This is how you ask it what is late
+      // right now.
+      this.worstView.setFilter(worstFilter.dataset['worstfilter'] as WorstFilter);
+      void this.worstView.render();
+      return;
+    }
+
     if (target.closest('[data-close]')) return this.closeTrain();
 
     const go = target.closest<HTMLElement>('[data-goto]');
@@ -496,6 +507,8 @@ export class App {
       x.classList.toggle('active', on);
       x.setAttribute('aria-pressed', String(on));
     }
+    // The markup starts on "all"; this puts the reader's own choice back.
+    this.worstView.restoreFilter();
 
     void this.render();
     void this.primeCache();

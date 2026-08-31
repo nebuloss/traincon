@@ -37,6 +37,10 @@ const FR: Dict = {
   'worst.upcoming': 'pas encore parti',
   'worst.gone': 'hors suivi',
   'worst.empty': 'Aucun retard notable aujourd’hui. Ça arrive.',
+  'worst.emptyLive': 'Aucun train en retard ne circule en ce moment.',
+  'worst.filterLabel': 'Trains à montrer',
+  'worst.filterAll': 'Tous',
+  'worst.filterLive': 'En circulation',
   'worst.failed': 'Palmarès indisponible : {error}',
   'nav.label': 'Navigation',
 
@@ -269,6 +273,10 @@ const EN: Dict = {
   'worst.upcoming': 'not started yet',
   'worst.gone': 'not tracked',
   'worst.empty': 'No notable delays today. It happens.',
+  'worst.emptyLive': 'Nothing delayed is running just now.',
+  'worst.filterLabel': 'Trains to show',
+  'worst.filterAll': 'All',
+  'worst.filterLive': 'Running now',
   'worst.failed': 'Hall of shame unavailable: {error}',
   'nav.label': 'Navigation',
 

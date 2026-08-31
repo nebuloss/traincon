@@ -128,6 +128,13 @@
   <!-- ============ PALMARES ============ -->
   <section id="view-worst" class="view" aria-label="Palmarès des retards">
     <h2 class="view-title" data-i18n="worst.title">Palmarès du jour</h2>
+    <div class="worst-filter map-modes" role="group" data-i18n-aria="worst.filterLabel"
+         aria-label="Trains à montrer">
+      <button data-worstfilter="all" class="active" aria-pressed="true"
+              data-i18n="worst.filterAll">Tous</button>
+      <button data-worstfilter="live" aria-pressed="false"
+              data-i18n="worst.filterLive">En circulation</button>
+    </div>
     <p class="hint" id="worstNote"></p>
     <ul id="worstList" class="suggest-list" role="listbox" data-i18n-aria="worst.title"
         aria-label="Trains les plus en retard"></ul>
