@@ -258,8 +258,12 @@ test('the train is put on the rails that are drawn under it', () => {
   // Every vehicle, not just the marker: a long train round a curve needs each
   // one placed, and the marker is hidden at the zoom the vehicles appear at.
   const body = src.slice(src.indexOf('const cars = trainCars('), src.indexOf('src.setData(cars)'));
-  assert.match(body, /snapToTrack\(/, 'the plan view too');
+  // Every vehicle onto the one line chosen at the front of the train, not one
+  // each: letting them choose separately let a 200 m set straddle both
+  // running lines of a double-track railway at once.
+  assert.match(body, /snapToLine\(lon, lat, line\)/, 'the plan view too, on the chosen line');
   assert.match(body, /f\.properties\.bearing = /, 'and turned to match the track it landed on');
+  assert.ok(!/snapToTrack\(/.test(body), 'the choice is not remade per vehicle');
 });
 
 test('snapping is bounded, so it can run in the animation loop', () => {
@@ -270,10 +274,13 @@ test('snapping is bounded, so it can run in the animation loop', () => {
   const fn = src.slice(src.indexOf('private nearbyTrack('), src.indexOf('private onSurveyedTrack('));
   assert.match(fn, /railSegsAt/, 'cached over time');
   assert.match(fn, /Math\.abs\(lon - this\.railSegsNear\[0\]\)/, 'and rebuilt when the train moves on');
-  assert.match(fn, /Math\.abs\(a\[0\] - lon\) < dLon/, 'filtered to a box around the train');
-  // And gathered once per frame rather than once per vehicle.
+  assert.match(fn, /Math\.abs\(p\[0\] - lon\) < dLon/, 'filtered to a box around the train');
+  // Gathered where the track is chosen — once, at the front of the train —
+  // and not again while the vehicles behind it are placed.
+  const choose = src.slice(src.indexOf('private onSurveyedTrack('), src.indexOf('private stopAnimation('));
+  assert.equal([...choose.matchAll(/nearbyTrack\(/g)].length, 1, 'one gather per choice');
   const body = src.slice(src.indexOf('const cars = trainCars('), src.indexOf('src.setData(cars)'));
-  assert.equal([...body.matchAll(/nearbyTrack\(/g)].length, 1, 'one gather for the whole train');
+  assert.equal([...body.matchAll(/nearbyTrack\(/g)].length, 0, 'none while drawing the vehicles');
 });
 
 
@@ -323,9 +330,12 @@ test('the work done per frame is bounded, because phones run this too', () => {
   // snap to. It is cached, cut to a box around the train, and not done at all
   // until the rails are drawn thickly enough for the correction to show.
   const fn = src.slice(src.indexOf('private onSurveyedTrack('), src.indexOf('private stopAnimation('));
-  assert.match(fn, /if \(zoom < 14\) return \[lon, lat\]/, 'skipped until it would be visible');
+  assert.match(fn, /if \(zoom < 14\) \{/, 'skipped until it would be visible');
   const gather = src.slice(src.indexOf('private nearbyTrack('), src.indexOf('private onSurveyedTrack('));
   assert.match(gather, /now - this\.railSegsAt < 4000/, 'and cached between gathers');
+  // The track is chosen once for the train, not once per vehicle.
+  const body = src.slice(src.indexOf('const cars = trainCars('), src.indexOf('src.setData(cars)'));
+  assert.ok(!/nearbyTrack\(/.test(body), 'and not re-gathered while drawing the vehicles');
 });
 
 test('the cheap work runs every frame and the expensive work does not', () => {

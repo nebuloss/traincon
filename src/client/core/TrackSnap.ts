@@ -21,6 +21,34 @@
  * only when there is a track close by and pointing the same way. Where there
  * is not — no tiles loaded, a station throat full of parallel roads, a gap in
  * the survey — it declines and the train stays where the model put it.
+ *
+ * One track, and the right one. The first version took whichever track was
+ * nearest, for each vehicle, every frame — wrong three times over on a
+ * double-track line. The two running lines are about four and a half metres
+ * apart and both point the same way, so "nearest" alternated between them as
+ * the centreline wandered and the train appeared to change track
+ * continuously; each vehicle chose for itself, so a 200 m set could straddle
+ * both at once; and nearest is a coin toss anyway, because which track a
+ * train uses is not a matter of proximity.
+ *
+ * It is a matter of which way it is going. **French trains run on the left**,
+ * unlike the roads. So the track is chosen by side: of the candidates within
+ * reach and pointing the right way, the one to the left of the direction of
+ * travel wins. That is deterministic, so it does not flicker, and it is what
+ * the train is actually doing.
+ *
+ * Two things this deliberately does not model. Lines in Alsace-Moselle run on
+ * the right — they were built between 1871 and 1918 when the territory was
+ * German, and the junctions with the rest of the network have flyovers to
+ * swap sides. And the LGVs run on the left even through that region, so the
+ * exception is not simply geographic: it belongs to the line, not the place.
+ * Getting it wrong there puts a train on the wrong track of a pair, four
+ * metres out; guessing it from a bounding box would put high-speed trains on
+ * the wrong track too, which is worse. So the rule is left-hand everywhere,
+ * and this note is the record of what it costs.
+ *
+ * The choice is made once for the whole train and then held, so noise in
+ * either survey cannot push it across.
  */
 
 /** A point on the ground. `[lon, lat]`, as GeoJSON has it. */
@@ -63,32 +91,96 @@ export interface Snapped {
   bearing: number;
 }
 
+/** A surveyed track, with something to recognise it by between frames. */
+export interface Line {
+  /** Stable enough to tell one running line from the one beside it. */
+  key: string;
+  points: readonly Point[];
+}
+
 /**
- * The closest point on any of `lines` to the train, or null to leave it be.
+ * How much nearer a different track has to be before the train moves across.
+ *
+ * A shade under the four and a half metres between the running lines of a
+ * double-track railway: enough that noise in either survey cannot push the
+ * train from one to the other, not so much that it clings to a track it has
+ * genuinely left.
+ */
+export const STICKY_M = 4;
+
+/**
+ * How far onto the wrong side a track may be and still count as the left one.
+ *
+ * It exists only so that a train sitting all but exactly on its own rails is
+ * not judged to be on the other side of itself by a few centimetres of survey
+ * noise. Any more and it stops being a slack: with a metre of it, the
+ * right-hand rail of a four-and-a-half-metre pair qualifies as left whenever
+ * the train drifts towards it, which is the flicker all over again.
+ */
+const SIDE_SLACK_M = 0.1;
+
+/** The closest point on one particular line, wherever it is. */
+export function snapToLine(lon: number, lat: number, line: Line): Snapped | null {
+  return nearest(lon, lat, null, [line], Infinity)?.hit ?? null;
+}
+
+/**
+ * The track to put the train on, or null to leave it where the model has it.
  *
  * `bearing` is where the train is heading, in degrees from north; pass null
- * when it is not known and the check is skipped.
+ * when it is not known and the check is skipped. `prefer` is the key of the
+ * track it is already on, which wins ties and near-ties.
  */
 export function snapToTrack(
   lon: number,
   lat: number,
   bearing: number | null,
-  lines: readonly (readonly Point[])[],
+  lines: readonly Line[],
   maxM: number = MAX_SNAP_M,
-): Snapped | null {
+  prefer?: string | null,
+): (Snapped & { key: string }) | null {
+  const found = nearest(lon, lat, bearing, lines, maxM, prefer);
+  return found ? { ...found.hit, key: found.key } : null;
+}
+
+/** The shared search. Distances are scored, so stickiness can bias them. */
+function nearest(
+  lon: number,
+  lat: number,
+  bearing: number | null,
+  lines: readonly Line[],
+  maxM: number,
+  prefer?: string | null,
+): { hit: Snapped; key: string } | null {
   // Local flat-earth metres. Over the tens of metres in question the error is
   // far below the thing being measured.
   const kx = M_PER_DEG * Math.cos((lat * Math.PI) / 180);
   const px = lon * kx;
   const py = lat * M_PER_DEG;
 
-  let best: Snapped | null = null;
-  let bestD = maxM;
+  // Two answers are kept: the best track on the left of the train, and the
+  // best of any. The left one wins if there is one — see the note above — and
+  // the other is there for single track, where there is no side to be on.
+  let best: { hit: Snapped; key: string } | null = null;
+  let bestScore = maxM;
+  let bestLeft: { hit: Snapped; key: string } | null = null;
+  let bestLeftScore = maxM;
+
+  // Left of the direction of travel, as a unit vector in (east, north).
+  // Heading north, left is west; heading east, left is north.
+  const rad = ((bearing ?? 0) * Math.PI) / 180;
+  const leftE = -Math.cos(rad);
+  const leftN = Math.sin(rad);
 
   for (const line of lines) {
-    for (let i = 1; i < line.length; i++) {
-      const a = line[i - 1]!;
-      const b = line[i]!;
+    const pts = line.points;
+    // The track it is already on gets a head start, so a rival has to be
+    // clearly nearer rather than a few centimetres nearer.
+    const bonus = prefer !== null && prefer !== undefined && line.key === prefer ? STICKY_M : 0;
+
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]!;
+      const b = pts[i]!;
       const ax = a[0] * kx;
       const ay = a[1] * M_PER_DEG;
       const bx = b[0] * kx;
@@ -102,7 +194,12 @@ export function snapToTrack(
       const fx = ax + t * dx;
       const fy = ay + t * dy;
       const d = Math.hypot(px - fx, py - fy);
-      if (d >= bestD) continue;
+      if (d > maxM) continue;
+      const score = d - bonus;
+      // Pruned against both answers, not just the overall best: the track on
+      // the correct side is often no nearer than the one beside it, and
+      // stopping at the first equally-good candidate would never see it.
+      if (score >= bestScore && score >= bestLeftScore) continue;
 
       // atan2(east, north), which is a compass bearing.
       let seg = (Math.atan2(dx, dy) * 180) / Math.PI;
@@ -116,10 +213,29 @@ export function snapToTrack(
         if (Math.abs(diff) > 90) seg += 180;
       }
 
-      bestD = d;
-      best = { lon: fx / kx, lat: fy / M_PER_DEG, movedM: d, bearing: ((seg % 360) + 360) % 360 };
+      const found = {
+        key: line.key,
+        hit: {
+          lon: fx / kx,
+          lat: fy / M_PER_DEG,
+          movedM: d,
+          bearing: ((seg % 360) + 360) % 360,
+        },
+      };
+
+      if (score < bestScore) {
+        bestScore = score;
+        best = found;
+      }
+
+      // Which side of the train this track lies on.
+      const leftness = (fx - px) * leftE + (fy - py) * leftN;
+      if (bearing !== null && leftness > -SIDE_SLACK_M && score < bestLeftScore) {
+        bestLeftScore = score;
+        bestLeft = found;
+      }
     }
   }
 
-  return best;
+  return bestLeft ?? best;
 }

@@ -15,7 +15,8 @@ import { aspectLamp } from './SignalAspect.ts';
 import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM } from './TrainIcon.ts';
 import { trainCars } from '../core/TrainBody.ts';
 import { zoomForSpeed } from '../core/Framing.ts';
-import { MAX_SNAP_M, snapToTrack, type Point } from '../core/TrackSnap.ts';
+import { MAX_SNAP_M, snapToLine, snapToTrack } from '../core/TrackSnap.ts';
+import type { Line, Point } from '../core/TrackSnap.ts';
 import { ensureLivery, iconScale } from '../core/TrainArt.ts';
 import { distanceFraction } from '../../shared/motion.ts';
 import { Theme } from '../core/Theme.ts';
@@ -34,7 +35,11 @@ interface MapLike {
   querySourceFeatures(
     source: string,
     opts: { sourceLayer: string },
-  ): Array<{ geometry: { type: string; coordinates: unknown } }>;
+  ): Array<{
+    id?: string | number;
+    properties?: Record<string, unknown>;
+    geometry: { type: string; coordinates: unknown };
+  }>;
   hasImage(id: string): boolean;
   addImage(id: string, image: ImageData, options?: { pixelRatio?: number }): void;
   getSource(id: string): { setData(d: unknown): void } | undefined;
@@ -102,7 +107,17 @@ export class MapView {
    * million distance tests per second for no benefit: a train cannot be near
    * track that is a kilometre away.
    */
-  private railSegs: Point[][] = [];
+  private railSegs: Line[] = [];
+  /**
+   * The track the train is on, and the line itself.
+   *
+   * Held between frames so it does not change under the train: on a
+   * double-track line the two running lines are metres apart and both point
+   * the same way, so "whichever is nearest" flips between them. And every
+   * vehicle is put on this one line, because a train is on one track.
+   */
+  private snappedTo: string | null = null;
+  private chosenLine: Line | null = null;
   /**
    * True while this is the one moving the map.
    *
@@ -803,19 +818,23 @@ export class MapView {
     // Each vehicle onto the rails drawn under it, and turned to match them.
     // Done per vehicle rather than for the train as a whole: that is what lays
     // a long train correctly round a curve the route only chords across.
-    // Gathered once for the whole train: asking per vehicle would rebuild the
-    // cache at every step down a 400 m consist, which is the opposite of the
-    // point of caching it.
-    const rails = this.nearbyTrack(here?.lon ?? 0, here?.lat ?? 0);
-    for (const f of cars.features) {
-      const [lon, lat] = f.geometry.coordinates;
-      // Undo what the artwork needs — nose-right, and a rear cab turned round
-      // — to recover the direction the vehicle is actually travelling.
-      const heading = f.properties.bearing + 90 - (f.properties.reversed ? 180 : 0);
-      const hit = snapToTrack(lon, lat, heading, rails, MAX_SNAP_M);
-      if (!hit) continue;
-      f.geometry.coordinates = [hit.lon, hit.lat];
-      f.properties.bearing = hit.bearing - 90 + (f.properties.reversed ? 180 : 0);
+    // Every vehicle onto the one track the train was put on, chosen at the
+    // front by onSurveyedTrack. Letting each choose for itself meant a 200 m
+    // set could straddle both running lines of a double-track railway at once.
+    const line = this.chosenLine;
+    if (line) {
+      for (const f of cars.features) {
+        const [lon, lat] = f.geometry.coordinates;
+        const hit = snapToLine(lon, lat, line);
+        if (!hit) continue;
+        f.geometry.coordinates = [hit.lon, hit.lat];
+        // Undo what the artwork needs — nose-right, and a rear cab turned
+        // round — to compare directions, then put it back on.
+        const heading = f.properties.bearing + 90 - (f.properties.reversed ? 180 : 0);
+        const diff = ((((hit.bearing - heading) % 360) + 540) % 360) - 180;
+        const along = Math.abs(diff) > 90 ? hit.bearing + 180 : hit.bearing;
+        f.properties.bearing = along - 90 + (f.properties.reversed ? 180 : 0);
+      }
     }
     src.setData(cars);
   }
@@ -857,7 +876,7 @@ export class MapView {
    * a minute rather than a few times a second — the surveyed track does not
    * move, and the train covers little ground between refreshes.
    */
-  private nearbyTrack(lon: number, lat: number): Point[][] {
+  private nearbyTrack(lon: number, lat: number): Line[] {
     const now = performance.now();
     const moved =
       this.railSegsNear === null ||
@@ -873,28 +892,49 @@ export class MapView {
     const dLat = 0.0063;
     const dLon = dLat / Math.max(0.3, Math.cos((lat * Math.PI) / 180));
 
-    const segs: Point[][] = [];
-    const take = (line: readonly Point[]): void => {
-      for (let i = 1; i < line.length; i++) {
-        const a = line[i - 1]!;
-        const b = line[i]!;
-        // Either end inside the box, which also keeps a long segment that
-        // merely passes through it near enough to matter.
-        const near =
-          (Math.abs(a[0] - lon) < dLon && Math.abs(a[1] - lat) < dLat) ||
-          (Math.abs(b[0] - lon) < dLon && Math.abs(b[1] - lat) < dLat);
-        if (near) segs.push([a, b]);
+    const lines: Line[] = [];
+    const inBox = (p: Point): boolean =>
+      Math.abs(p[0] - lon) < dLon && Math.abs(p[1] - lat) < dLat;
+
+    /**
+     * Keep the run of the line that passes near the train, with a point either
+     * side so the segments crossing the edge of the box are not lost.
+     *
+     * Kept as a line rather than loose segments because it needs an identity:
+     * the train stays on the track it is already on, and that is only
+     * meaningful if one frame's track can be recognised in the next.
+     */
+    const take = (key: string, pts: readonly Point[]): void => {
+      let from = -1;
+      let to = -1;
+      for (let i = 0; i < pts.length; i++) {
+        if (!inBox(pts[i]!)) continue;
+        if (from === -1) from = i;
+        to = i;
       }
+      if (from === -1) return;
+      const run = pts.slice(Math.max(0, from - 1), Math.min(pts.length, to + 2));
+      if (run.length > 1) lines.push({ key, points: run });
     };
 
     try {
       const feats = this.map?.querySourceFeatures('osmrail', { sourceLayer: 'tracks' }) ?? [];
       for (const f of feats) {
         const g = f.geometry;
-        if (g.type === 'LineString') take(g.coordinates as Point[]);
-        else if (g.type === 'MultiLineString') for (const l of g.coordinates as Point[][]) take(l);
+        // The same way is served once per tile, so the id ties the pieces of
+        // one track together across tile boundaries. Where there is none, the
+        // track number and a rounded coordinate stand in.
+        const ref = String(f.properties?.['railway:track_ref'] ?? '');
+        if (g.type === 'LineString') {
+          const pts = g.coordinates as Point[];
+          take(String(f.id ?? `${ref}@${pts[0]?.[0].toFixed(4)},${pts[0]?.[1].toFixed(4)}`), pts);
+        } else if (g.type === 'MultiLineString') {
+          for (const [n, l] of (g.coordinates as Point[][]).entries()) {
+            take(String(f.id ?? `${ref}@${l[0]?.[0].toFixed(4)},${l[0]?.[1].toFixed(4)}#${n}`), l);
+          }
+        }
       }
-      this.railSegs = segs;
+      this.railSegs = lines;
     } catch {
       // The layer may not be added, or the source not loaded yet. The train
       // simply stays on the line the model put it on.
@@ -915,9 +955,23 @@ export class MapView {
     // be visibly beside them. Below that the correction is under a pixel and
     // not worth walking the tile features for — which matters on a phone,
     // where that walk is the most expensive thing this view does.
-    if (zoom < 14) return [lon, lat];
-    const hit = snapToTrack(lon, lat, bearing, this.nearbyTrack(lon, lat), MAX_SNAP_M);
-    return hit ? [hit.lon, hit.lat] : [lon, lat];
+    if (zoom < 14) {
+      this.chosenLine = null;
+      return [lon, lat];
+    }
+
+    // One choice for the whole train, biased towards the track it is already
+    // on. Made here, at the front of the train, and then reused for every
+    // vehicle behind it — see drawBody.
+    const hit = snapToTrack(lon, lat, bearing, this.nearbyTrack(lon, lat), MAX_SNAP_M, this.snappedTo);
+    if (!hit) {
+      this.chosenLine = null;
+      this.snappedTo = null;
+      return [lon, lat];
+    }
+    this.snappedTo = hit.key;
+    this.chosenLine = this.railSegs.find((l) => l.key === hit.key) ?? null;
+    return [hit.lon, hit.lat];
   }
 
   private stopAnimation(): void {
