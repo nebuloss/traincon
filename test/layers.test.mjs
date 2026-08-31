@@ -238,7 +238,11 @@ test('the camera aims at where the train is drawn, not where it was reported', (
     // France, before there is any train to look at.
     if (/^\[[\d.-]+, [\d.-]+\],?$/.test(c)) continue;
     checked++;
-    const ok = c.includes('drawnPoint()') || c.startsWith('at,');
+    // Either the drawn position itself, or something derived from it — the
+    // camera leads a fast train, so the centre is `at` advanced along its
+    // heading. What it must never be is the position the server reported.
+    const ok = c.includes('drawnPoint()') || c.startsWith('at,') || c.includes('leadPoint(at');
+    assert.ok(!/\bp\.lon\b/.test(c) || c.includes('drawnPoint()'), `centres on the reported position: ${c}`);
     assert.ok(ok, `centres on ${c} without asking where the train is drawn`);
   }
   assert.ok(checked >= 2, 'expected at least the framing and the follow paths');
@@ -285,4 +289,19 @@ test('snapping is bounded, so it can run in the animation loop', () => {
   // And gathered once per frame rather than once per vehicle.
   const body = src.slice(src.indexOf('const cars = trainCars('), src.indexOf('src.setData(cars)'));
   assert.equal([...body.matchAll(/nearbyTrack\(/g)].length, 1, 'one gather for the whole train');
+});
+
+test('the camera leads a fast train rather than chasing it', () => {
+  // Aiming at the present position lands every pan behind the train, and at
+  // 300 km/h and a close zoom that is 30 to 60 pixels each time — enough that
+  // it walks to the edge of the screen and out of view however often the
+  // camera chases. Reported exactly that way.
+  const fn = src.slice(src.indexOf('private keepInSight('), src.indexOf('private nearbyTrack('));
+  assert.match(fn, /leadPoint\(/, 'the aim must be led');
+  assert.match(fn, /EASE_MS \/ 1000/, 'and led by the length of the pan');
+  // The two have to be the same figure, or the lead over- or under-shoots.
+  const dur = /duration: MapView\.EASE_MS/.test(fn);
+  assert.ok(dur, 'the pan should last exactly what the lead assumes');
+  // And it needs the speed to lead by, which means being told it.
+  assert.match(src, /this\.keepInSight\(at, here\.bearing, kmh\)/, 'from the animation loop');
 });

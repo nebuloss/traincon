@@ -14,7 +14,7 @@ import { Track } from '../core/Track.ts';
 import { aspectLamp } from './SignalAspect.ts';
 import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM } from './TrainIcon.ts';
 import { trainCars } from '../core/TrainBody.ts';
-import { outsideMiddle } from '../core/Viewport.ts';
+import { leadPoint, outsideMiddle } from '../core/Viewport.ts';
 import { zoomForSpeed } from '../core/Framing.ts';
 import { MAX_SNAP_M, snapToTrack, type Point } from '../core/TrackSnap.ts';
 import { ensureLivery, iconScale } from '../core/TrainArt.ts';
@@ -82,6 +82,13 @@ export class MapView {
   private readonly liveries = new Set<string>();
   /** Whether the view is meant to keep the train in sight. */
   private following = false;
+  /**
+   * How long the camera takes to pan after the train.
+   *
+   * Long enough to read as a glide rather than a jump, and the same figure the
+   * aim is led by — see keepInSight.
+   */
+  private static readonly EASE_MS = 900;
   /**
    * Surveyed track near the train, as individual segments — see core/TrackSnap.
    *
@@ -162,7 +169,9 @@ export class MapView {
     // no animation loop to notice for itself.
     this.map.on('moveend', () => {
       const at = this.drawnPoint();
-      if (at) this.keepInSight(at);
+      if (!at) return;
+      const here = this.drawnKm !== null ? this.track?.at(this.drawnKm) : null;
+      this.keepInSight(at, here?.bearing ?? null, this.drawn?.position.speedKmh ?? 0);
     });
     await new Promise<void>((r) => this.map!.on('load', () => r()));
     this.addRailLayers();
@@ -617,7 +626,7 @@ export class MapView {
           if (here) {
             const at = this.onSurveyedTrack(here.lon, here.lat, here.bearing);
             this.marker.setLngLat(at);
-            this.keepInSight(at);
+            this.keepInSight(at, here.bearing, kmh);
             const dir = this.marker.getElement().querySelector<HTMLElement>('.tm-dir');
             if (dir) {
               dir.style.transform = `rotate(${here.bearing}deg) translateY(calc(-1 * var(--tm-orbit)))`;
@@ -752,7 +761,7 @@ export class MapView {
    * the map is already moving, which covers both the user's own gestures and
    * the easing this itself starts.
    */
-  private keepInSight(at: [number, number]): void {
+  private keepInSight(at: [number, number], bearing: number | null, kmh: number): void {
     if (!this.following || !this.map || this.map.isMoving()) return;
     const box = this.map.getContainer();
     const w = box.clientWidth;
@@ -761,7 +770,17 @@ export class MapView {
 
     const p = this.map.project(at);
     if (!outsideMiddle(p.x, p.y, w, h)) return;
-    this.map.easeTo({ center: at, duration: 600 });
+
+    // Aimed where the train will be when the pan finishes, not where it is
+    // now. A TGV at the zoom someone uses to watch one covers 30 to 60 pixels
+    // during the pan, so aiming at the present position lands the camera
+    // behind it every time — and it walks off the edge of the screen however
+    // often the camera chases. Leading by the length of the pan cancels that
+    // exactly.
+    this.map.easeTo({
+      center: leadPoint(at[0], at[1], bearing, kmh, MapView.EASE_MS / 1000),
+      duration: MapView.EASE_MS,
+    });
   }
 
   /**
