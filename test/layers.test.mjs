@@ -246,7 +246,8 @@ test('the camera aims at where the train is drawn, not where it was reported', (
 
 test('the train is chased between refreshes, not only on one', () => {
   // Without this it ran off the edge and stayed there until the next update.
-  assert.match(src, /this\.keepInSight\(\[here\.lon, here\.lat\]\)/, 'from the animation loop');
+  const loop = src.slice(src.indexOf('const step = ()'), src.indexOf('private modelledKm'));
+  assert.match(loop, /this\.keepInSight\(/, 'from the animation loop');
   assert.match(src, /this\.map\.on\('moveend'/, 'and once a gesture settles');
 });
 
@@ -256,4 +257,32 @@ test('chasing the train never fights the user mid-gesture', () => {
   const keep = src.slice(src.indexOf('private keepInSight('));
   assert.match(keep.slice(0, 400), /this\.map\.isMoving\(\)/, 'stands down while the map moves');
   assert.match(keep.slice(0, 600), /outsideMiddle\(/, 'and only acts at the edge of the view');
+});
+
+test('the train is put on the rails that are drawn under it', () => {
+  // The train is placed along SNCF Réseau's geometry; the track beneath it is
+  // OpenStreetMap's. They mostly agree, but the SNCF vertices are sparse in
+  // places and a long chord cuts the corner of a curve — which is a train
+  // drawn beside its own rails. See core/TrackSnap.
+  assert.match(src, /snapToTrack\(/, 'the drawn position is snapped');
+  assert.match(src, /querySourceFeatures\('osmrail', \{ sourceLayer: 'tracks' \}\)/, 'to the drawn track');
+  // Every vehicle, not just the marker: a long train round a curve needs each
+  // one placed, and the marker is hidden at the zoom the vehicles appear at.
+  const body = src.slice(src.indexOf('const cars = trainCars('), src.indexOf('src.setData(cars)'));
+  assert.match(body, /snapToTrack\(/, 'the plan view too');
+  assert.match(body, /f\.properties\.bearing = /, 'and turned to match the track it landed on');
+});
+
+test('snapping is bounded, so it can run in the animation loop', () => {
+  // A view at this zoom holds a few thousand track segments; snapping every
+  // vehicle against all of them twelve times a second would be most of a
+  // million distance tests per second. The candidates are cut to a box around
+  // the train when the cache is built.
+  const fn = src.slice(src.indexOf('private nearbyTrack('), src.indexOf('private onSurveyedTrack('));
+  assert.match(fn, /railSegsAt/, 'cached over time');
+  assert.match(fn, /Math\.abs\(lon - this\.railSegsNear\[0\]\)/, 'and rebuilt when the train moves on');
+  assert.match(fn, /Math\.abs\(a\[0\] - lon\) < dLon/, 'filtered to a box around the train');
+  // And gathered once per frame rather than once per vehicle.
+  const body = src.slice(src.indexOf('const cars = trainCars('), src.indexOf('src.setData(cars)'));
+  assert.equal([...body.matchAll(/nearbyTrack\(/g)].length, 1, 'one gather for the whole train');
 });
