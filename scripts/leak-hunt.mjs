@@ -233,6 +233,34 @@ results['toDTO'] = await probe('toDTO for every train', () => {
   for (const t of store.trains) store.toDTO(t);
 });
 
+// Serving, for real, over a socket. The store is clean across a simulated day,
+// so what is left is the part a harness that never sends a request cannot see:
+// this is a public site answering traffic all day.
+if (process.env['LEAK_HTTP']) {
+  const { ApiServer } = await import(path.join(ROOT, 'dist-server/server/Server.js'));
+  const api = new ApiServer(store, path.join(ROOT, 'dist'));
+  await api.listen(0);
+  const port = api.port ?? api.server?.address()?.port;
+  const B = `http://127.0.0.1:${port}`;
+  const num = store.trains[0]?.number ?? '8501';
+  const paths = [
+    '/api/trains',
+    '/api/stats',
+    '/api/worst',
+    '/api/suggest?q=paris',
+    '/api/stations',
+    `/api/trains?number=${num}`,
+    '/',
+    `/train/${num}/carte`,
+  ];
+  let n = 0;
+  results['http'] = await probe('serving over a socket', async () => {
+    const r = await fetch(B + paths[n++ % paths.length]);
+    await r.arrayBuffer(); // drain, as a real client does
+  });
+  await api.close();
+}
+
 console.log('\n─── settled cost per iteration ───');
 for (const [k, v] of Object.entries(results).filter(([, v]) => v !== null)) {
   console.log(`  ${k.padEnd(12)} ${v.toFixed(0).padStart(8)} B`);
