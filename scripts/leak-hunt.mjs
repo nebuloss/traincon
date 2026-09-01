@@ -349,6 +349,45 @@ if (process.env['LEAK_CACHE']) {
   process.exit(0);
 }
 
+// ── the twelve-hour reload, which is not a leak but kills like one ───────────
+//
+// `GtfsStatic.isStale` turns true after MAX_AGE_MS = 12 h, and the next poll
+// reloads. The process that died had been up 43,215,548 ms; the window is
+// 43,200,000. It died 15.5 s into the first poll after its static data went
+// stale — one poll interval.
+//
+// Nothing is retained, which is why every retention probe here reads flat.
+// What happens is a spike: the old tables are still held (the assignment only
+// happens once load() returns), all three CSVs are read as strings and parsed
+// into arrays of per-row objects at the same time, and the new Maps are built
+// on top. Against a ceiling the working set was already close to, that is
+// fatal — and a probe that reads settled heap is blind to it by construction.
+if (process.env['LEAK_RELOAD']) {
+  const { GtfsStatic } = await import(path.join(ROOT, 'dist-server/server/GtfsStatic.js'));
+  const dataDir = path.join(ROOT, 'data');
+
+  const held = await GtfsStatic.load(dataDir); // stands in for the live tables
+  const base = settled();
+  console.log(`holding one set of tables: ${mb(base)} MB\n`);
+
+  // Sample often enough to catch the peak: it lasts well under a second.
+  let peak = base;
+  const tick = setInterval(() => {
+    const u = v8.getHeapStatistics().used_heap_size;
+    if (u > peak) peak = u;
+  }, 5);
+  const replacement = await GtfsStatic.load(dataDir);
+  clearInterval(tick);
+  const after = settled();
+
+  console.log(`  peak during reload   ${mb(peak).padStart(7)} MB`);
+  console.log(`  settled after        ${mb(after).padStart(7)} MB`);
+  console.log(`  transient spike      ${mb(peak - base).padStart(7)} MB  <- what has to fit`);
+  console.log(`  actually retained    ${mb(after - base).padStart(7)} MB`);
+  console.log(`\n  (${replacement.stops.size} stops, ${held.trains.size} trains in each set)`);
+  process.exit(0);
+}
+
 console.log('\n─── settled cost per iteration ───');
 for (const [k, v] of Object.entries(results).filter(([, v]) => v !== null)) {
   console.log(`  ${k.padEnd(12)} ${v.toFixed(0).padStart(8)} B`);
