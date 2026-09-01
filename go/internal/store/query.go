@@ -359,6 +359,17 @@ func (s *Store) FeedTS() int64 {
 	return s.feedTS
 }
 
+// RailDisplayGz is the thinned in-service network, already gzipped, or nil
+// where the geometry was not loaded.
+func (s *Store) RailDisplayGz() []byte {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.graph == nil {
+		return nil
+	}
+	return s.graph.DisplayGz
+}
+
 // Stations exposes the static schedule, for the routes that search it.
 func (s *Store) Stations() *gtfs.Static {
 	s.mu.RLock()

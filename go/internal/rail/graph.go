@@ -39,6 +39,10 @@ type Graph struct {
 	edgeHr   []float64 // nominal traversal time of each edge
 
 	cells map[int64][]int32
+
+	// DisplayGz is the thinned in-service network, gzipped once at boot. The
+	// map draws it as a background layer; nothing else reads it.
+	DisplayGz []byte
 }
 
 // NodeCount returns the number of nodes in the graph.

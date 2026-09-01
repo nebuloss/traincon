@@ -115,12 +115,19 @@ func NewSpeedIndex(rows []SpeedRow) *SpeedIndex {
 // cannot be placed, the line's own maximum stands in, and where the line is
 // unknown, the default does.
 func (s *SpeedIndex) SpeedFor(code string, pkA, pkB float64, haveA, haveB bool) float64 {
+	return s.SpeedForOr(code, pkA, pkB, haveA, haveB, defaultSpeedKmh)
+}
+
+// SpeedForOr is SpeedFor with the caller's own fallback. The map passes zero:
+// it draws unknown track as ordinary, and claiming 100 would be claiming
+// knowledge the export does not have.
+func (s *SpeedIndex) SpeedForOr(code string, pkA, pkB float64, haveA, haveB bool, fallback float64) float64 {
 	if s == nil || code == "" {
-		return defaultSpeedKmh
+		return fallback
 	}
 	spans := s.byLine[code]
 	if len(spans) == 0 {
-		return defaultSpeedKmh
+		return fallback
 	}
 	if !haveA || !haveB {
 		return s.maxOf[code]

@@ -159,10 +159,23 @@ func (s *Server) suggest(w http.ResponseWriter, r *http.Request) {
 		r.URL.Query().Get("q"), family(r), intParam(r, "limit", 20)))
 }
 
+// railGeoJSON serves the drawn network, gzipped at boot and never rebuilt.
+//
+// Sent pre-compressed: it is the same bytes for every caller, so compressing it
+// per request would be work done thousands of times for one answer. A client
+// that cannot take gzip is not one this map runs in.
 func (s *Server) railGeoJSON(w http.ResponseWriter, r *http.Request) {
-	// The in-service network is not yet served by this build; the client
-	// tolerates its absence by drawing no background rail layer.
-	http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+	body := s.store.RailDisplayGz()
+	if body == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "geometry unavailable"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/geo+json; charset=utf-8")
+	w.Header().Set("Content-Encoding", "gzip")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(http.StatusOK)
+	w.Write(body)
 }
 
 var (

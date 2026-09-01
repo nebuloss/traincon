@@ -92,6 +92,7 @@ func loadGeometry(path string, speeds *SpeedIndex) (*Graph, error) {
 	}
 
 	b := NewBuilder()
+	var drawn display
 	for dec.More() {
 		var ft rfnFeature
 		if err := dec.Decode(&ft); err != nil {
@@ -108,6 +109,7 @@ func loadGeometry(path string, speeds *SpeedIndex) (*Graph, error) {
 		if err != nil {
 			return nil, fmt.Errorf("rail: %s: %w", path, err)
 		}
+		drawKmh := speeds.SpeedForOr(ft.Properties.CodeLigne, pkA, pkB, okA, okB, 0)
 		for _, line := range lines {
 			prev := int32(-1)
 			for _, c := range line {
@@ -121,11 +123,14 @@ func loadGeometry(path string, speeds *SpeedIndex) (*Graph, error) {
 				}
 				prev = id
 			}
+			drawn.add(line, drawKmh)
 		}
 	}
 
 	b.Stitch(stitchToleranceKm)
-	return b.Build(), nil
+	g := b.Build()
+	g.DisplayGz = drawn.gzipped()
+	return g, nil
 }
 
 // lineStrings normalises a geometry to a list of lines, so LineString and
