@@ -53,6 +53,10 @@ const mb = (b) => (b / 1e6).toFixed(1);
  * is a cache reaching its bound, which is the behaviour we want.
  */
 async function probe(name, iterate, rounds = ROUNDS, per = PER_ROUND) {
+  // LEAK_ONLY=rail runs one probe long enough to cross a cache's budget;
+  // proving a bound holds needs far more iterations than spotting a leak.
+  const only = process.env['LEAK_ONLY'];
+  if (only && !name.includes(only)) return null;
   process.stdout.write(`\n${name}\n`);
   // Warm up first: first-call allocation (lazy compilation, initial cache
   // fill) is not a leak and would otherwise dominate round one.
@@ -135,7 +139,7 @@ results['toDTO'] = await probe('toDTO for every train', () => {
 });
 
 console.log('\n─── settled cost per iteration ───');
-for (const [k, v] of Object.entries(results)) {
+for (const [k, v] of Object.entries(results).filter(([, v]) => v !== null)) {
   console.log(`  ${k.padEnd(12)} ${v.toFixed(0).padStart(8)} B`);
 }
 console.log(
