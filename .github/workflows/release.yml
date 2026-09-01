@@ -25,6 +25,21 @@ jobs:
       - name: Test
         run: npm test
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: go/go.sum
+
+      # Static, so the container needs no Go toolchain and no shared libraries
+      # — and CGO off is what makes it static on a glibc builder.
+      - name: Build the Go server
+        working-directory: go
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          go test ./...
+          go build -trimpath -ldflags='-s -w' -o ../traincon-linux-amd64 ./cmd/traincon
+
       - name: Package
         run: tar -czf traincon.tar.gz dist/ dist-server/ scripts/ fixtures/ tools/ package.json package-lock.json
 
@@ -36,5 +51,6 @@ jobs:
           # and pinned to the version that was tested against it.
           files: |
             traincon.tar.gz
+            traincon-linux-amd64
             data/geo/signals.json.gz
           generate_release_notes: true

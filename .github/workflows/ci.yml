@@ -22,6 +22,20 @@ jobs:
       - run: npm run build
       - run: npm test
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: go/go.sum
+
+      # gofmt is not advisory: unformatted Go is a review distraction, and the
+      # tool settles it rather than the reviewer.
+      - name: Check the Go server
+        working-directory: go
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; echo 'run gofmt -w .'; exit 1; }
+          go vet ./...
+          go test ./...
+
       # Advisory: a style nit in the installer should surface, not block a
       # release. Correctness is covered by `sh -n` and the test suite.
       - name: Shellcheck the installer
