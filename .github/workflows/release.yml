@@ -19,8 +19,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build the client
-        run: npm run build
+      - name: Check and build the client
+        run: |
+          npm run typecheck
+          npm run build
 
       - name: Test the client
         run: npm test
@@ -54,17 +56,17 @@ jobs:
           build arm64 arm64
           build arm   armv7 7
 
-      # The installer downloads an executable over the network and runs it as
-      # root. Publishing the digests lets it check that what arrived is what
-      # was built here, which costs one file.
-      - name: Checksums
-        run: sha256sum traincon-linux-* traincon.tar.gz > SHA256SUMS
-
       - name: Package
         # The client bundle and the one script the installer runs. No
         # package.json, no node_modules, no diagnostics that would need a
         # runtime the server no longer has.
         run: tar -czf traincon.tar.gz dist/ scripts/fetch-geo.sh
+
+      # The installer downloads an executable over the network and runs it as
+      # root. Publishing the digests lets it check that what arrived is what
+      # was built here, which costs one file.
+      - name: Checksums
+        run: sha256sum traincon-linux-* traincon.tar.gz > SHA256SUMS
 
       - name: Create release
         uses: softprops/action-gh-release@v2
