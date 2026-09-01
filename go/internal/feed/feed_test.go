@@ -51,7 +51,9 @@ func TestEventReadsDistinguishAbsentFromZero(t *testing.T) {
 	}
 }
 
-// entity builds one trip update for the rejection tests.
+// entity builds one trip update. The id shape is the real one: the feed
+// numbers trains "OCESN29950F" — three fixed letters, an operator code, the
+// number, and a terminator.
 func entity(id string, stops ...*rt.TripUpdate_StopTimeUpdate) *rt.FeedEntity {
 	return &rt.FeedEntity{
 		Id:         proto.String(id),
@@ -73,7 +75,7 @@ func testStatics() *gtfs.Static {
 			"B": {ID: "B", Name: "Bourg", Lat: 47, Lon: 3},
 		},
 		Trains: map[string]gtfs.TrainMeta{
-			"TGV12345": {Number: "12345", Service: "OUI", Line: "Paris - Lyon"},
+			"SN12345": {Number: "12345", Service: "OUI", Line: "Paris - Lyon"},
 		},
 	}
 }
@@ -85,9 +87,9 @@ func TestBuildTrainRejections(t *testing.T) {
 		e    *rt.FeedEntity
 	}{
 		{"an id that is not a train number", entity("something-else", stopAt("A", 100), stopAt("B", 200))},
-		{"no stop time updates", entity("OCETGV12345F")},
-		{"only one usable call", entity("OCETGV12345F", stopAt("A", 100))},
-		{"stops the schedule does not know", entity("OCETGV12345F", stopAt("X", 100), stopAt("Y", 200))},
+		{"no stop time updates", entity("OCESN12345F")},
+		{"only one usable call", entity("OCESN12345F", stopAt("A", 100))},
+		{"stops the schedule does not know", entity("OCESN12345F", stopAt("X", 100), stopAt("Y", 200))},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -100,7 +102,7 @@ func TestBuildTrainRejections(t *testing.T) {
 
 func TestBuildTrainReadsTheJourney(t *testing.T) {
 	st := testStatics()
-	got, ok := buildTrain(entity("OCETGV12345F", stopAt("A", 100), stopAt("B", 200)), st, 999, 0)
+	got, ok := buildTrain(entity("OCESN12345F", stopAt("A", 100), stopAt("B", 200)), st, 999, 0)
 	if !ok {
 		t.Fatal("rejected a usable journey")
 	}
@@ -126,7 +128,7 @@ func TestBuildTrainShiftsAReplayedCapture(t *testing.T) {
 	// amount, or the journey would be internally inconsistent.
 	st := testStatics()
 	const shift = 1000
-	got, ok := buildTrain(entity("OCETGV12345F", stopAt("A", 100), stopAt("B", 200)), st, 0, shift)
+	got, ok := buildTrain(entity("OCESN12345F", stopAt("A", 100), stopAt("B", 200)), st, 0, shift)
 	if !ok {
 		t.Fatal("rejected a usable journey")
 	}
@@ -141,7 +143,7 @@ func TestBuildTrainShiftsAReplayedCapture(t *testing.T) {
 
 func TestBuildTrainMarksCancellation(t *testing.T) {
 	st := testStatics()
-	e := entity("OCETGV12345F", stopAt("A", 100), stopAt("B", 200))
+	e := entity("OCESN12345F", stopAt("A", 100), stopAt("B", 200))
 	e.TripUpdate.Trip = &rt.TripDescriptor{
 		ScheduleRelationship: rt.TripDescriptor_CANCELED.Enum(),
 	}
