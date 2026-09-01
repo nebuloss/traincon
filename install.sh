@@ -33,6 +33,15 @@ SERVICE_NAME="${SERVICE_NAME:-traincon}"
 SERVICE_USER="${SERVICE_USER:-traincon}"
 NODE_VERSION="${NODE_VERSION:-22}"
 GH_REPO="${GH_REPO:-nebuloss/traincon}"
+
+# Which server to run: the Go binary, or the Node bundle it was ported from.
+#
+# The Go one is a single static file — no runtime, no node_modules, no unzip —
+# and holds less than half the memory for the same feed. Node remains the
+# default until the Go server has run long enough in production to be the one
+# people are surprised not to get.
+RUNTIME="${TRAINCON_RUNTIME:-node}"
+GO_BINARY="traincon-linux-amd64"
 TARBALL="${TARBALL:-}"              # install this archive instead of a release
 VERSION="${VERSION:-}"              # install this tag instead of the newest
 SNCF_API_KEY="${SNCF_API_KEY:-}"    # optional
@@ -157,6 +166,16 @@ service_install() {
   esac
 }
 
+# What the service actually executes. One definition, so the two service files
+# cannot drift apart on which server they start.
+server_exec() {
+  if [ "$RUNTIME" = go ]; then
+    printf '%s/traincon' "$APP_DIR"
+  else
+    printf '%s %s/dist-server/server/index.js' "$(command -v node)" "$APP_DIR"
+  fi
+}
+
 write_openrc_service() {
   info "Installing the OpenRC service"
 
@@ -171,8 +190,8 @@ write_openrc_service() {
 #!/sbin/openrc-run
 name="$SERVICE_NAME"
 description="Traincon - live SNCF train tracking"
-command="$(command -v node)"
-command_args="$APP_DIR/dist-server/server/index.js"
+command="$(server_exec | cut -d' ' -f1)"
+command_args="$(server_exec | cut -s -d' ' -f2-)"
 command_user="$SERVICE_USER"
 directory="$APP_DIR"
 pidfile="/run/\$RC_SVCNAME.pid"
@@ -225,7 +244,7 @@ Type=simple
 User=$SERVICE_USER
 WorkingDirectory=$APP_DIR
 EnvironmentFile=$APP_DIR/.env
-ExecStart=$(command -v node) $APP_DIR/dist-server/server/index.js
+ExecStart=$(server_exec)
 Restart=always
 RestartSec=5
 
@@ -291,6 +310,12 @@ node_recent_enough() {
 }
 
 ensure_node() {
+  # The Go binary is static: no runtime to install, which is most of what this
+  # installer used to do on a bare machine.
+  if [ "$RUNTIME" = go ]; then
+    info "Go runtime: no Node needed"
+    return 0
+  fi
   if node_recent_enough; then
     info "Node already present: $(node -v)"
     return 0
@@ -352,6 +377,13 @@ unpack_release() {
   curl -fsSL "$url" -o "$dest/app.tar.gz" || die "download failed: $url"
   tar -xzf "$dest/app.tar.gz" -C "$dest"
   rm -f "$dest/app.tar.gz"
+
+  # The client bundle is the same either way; only the server differs.
+  if [ "$RUNTIME" = go ]; then
+    url="https://github.com/${GH_REPO}/releases/download/${tag}/${GO_BINARY}"
+    curl -fsSL "$url" -o "$dest/traincon" || die "download failed: $url"
+    chmod +x "$dest/traincon"
+  fi
 }
 
 install_app() {
@@ -370,6 +402,11 @@ install_app() {
 }
 
 install_dependencies() {
+  # The Go binary carries its own: nothing to install, and no npm on the box.
+  if [ "$RUNTIME" = go ]; then
+    info "Go runtime: no dependencies to install"
+    return
+  fi
   info "Installing dependencies"
   cd "$APP_DIR"
   npm ci --omit=dev --no-audit --no-fund >/dev/null 2>&1 ||
