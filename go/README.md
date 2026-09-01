@@ -25,7 +25,9 @@ node's edges are a contiguous range of three flat arrays.
     internal/geo/        great-circle helpers, in km and degrees from north
     internal/gtfs/       the static schedule: stops, stations, train numbers
     internal/feed/       GTFS-RT trip updates, normalised into trains
-    internal/rail/       the routing graph, line speeds, and Dijkstra
+    internal/rail/       the routing graph, line speeds, Dijkstra, path cache
+    internal/motion/     where along a leg a train has got to
+    internal/train/      legs, delays, observation quality, and position
 
 ## Build and test
 
@@ -71,10 +73,25 @@ Everything else is the standard library — `net/http`, `encoding/csv`,
 `archive/zip` (which is why there is no longer an `unzip` binary to install),
 `compress/gzip`, `encoding/json`.
 
+## Deliberate differences from the TypeScript
+
+Two, both found by tests written against the original's behaviour, and both
+recorded where they live:
+
+- `parsePK("-3+500")` is 3.5 km before a line's origin, not 2.5. The TypeScript
+  adds the fraction regardless of sign. No negative kilometre point occurs in
+  the export — 0 of 4 694 — so no route can change.
+- `Position.progress` counts legs completed over legs there are. The TypeScript
+  divides the leg index alone, so an arrived train reports half its journey
+  done on a three-stop run and none of it on a two-stop one. Nothing on the
+  client reads the field.
+
+Everything else is faithful, and pinned by the equivalence tests above.
+
 ## Still to port
 
-`Train`, `TrainStore`, `Headway`, `Signals`, `Blocks`, `DailyBoard`,
-`Disruptions`, `CouplingDetector` and the HTTP layer — about 3 000 lines. The
+`TrainStore`, `Headway`, `Signals`, `Blocks`, `DailyBoard`, `Disruptions`,
+`CouplingDetector` and the HTTP layer — about 1 800 lines. The
 client stays TypeScript and needs no changes: the contract between them is
 JSON, and the only behaviour shared across the boundary is `plausibleSpeed` and
 `deeplink`, under 40 lines. `distanceFraction` is client-only — the server
