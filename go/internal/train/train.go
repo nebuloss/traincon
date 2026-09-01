@@ -176,7 +176,9 @@ func (t *Train) LegAt(now int64) Leg {
 // delay is simply carried forward, so a train that recovers or loses time
 // mid-leg is invisible until it arrives.
 type Observation struct {
-	LastStop     string     `json:"lastStop"`
+	// LastStop is null before the train has passed anything, which the
+	// client distinguishes from a station with an empty name.
+	LastStop     *string    `json:"lastStop"`
 	LastStopTime int64      `json:"lastStopTime,omitempty"`
 	AgeSec       *int64     `json:"ageSec"`
 	LegSec       *int64     `json:"legSec"`
@@ -196,7 +198,8 @@ func (t *Train) ObservationAt(now int64) Observation {
 	}
 
 	age := now - last.Time
-	obs := Observation{LastStop: last.Name, LastStopTime: last.Time, AgeSec: &age}
+	name := last.Name
+	obs := Observation{LastStop: &name, LastStopTime: last.Time, AgeSec: &age}
 	if next, ok := t.NextCall(now); ok {
 		leg := next.Time - last.Time
 		obs.LegSec = &leg

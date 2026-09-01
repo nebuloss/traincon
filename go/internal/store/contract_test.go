@@ -145,6 +145,23 @@ func TestTheMapPayloadKeepsEveryFieldTheMapReads(t *testing.T) {
 		"geometry", "quality", "observation", "next")
 }
 
+func TestAbsentValuesAreNullNotEmpty(t *testing.T) {
+	// Key presence is not enough: the client tells "no last stop" from "a stop
+	// with no name", and an empty string reads as the second. This was found
+	// only by diffing the two servers on the same feed, on 520 trains.
+	obs := keys(t, train.Observation{Confidence: train.Scheduled})
+	for _, field := range []string{"lastStop", "ageSec", "legSec"} {
+		if got := string(obs[field]); got != "null" {
+			t.Errorf("%s = %s before anything has been passed, want null", field, got)
+		}
+	}
+
+	pos := keys(t, train.Position{})
+	if got := string(pos["nextStop"]); got != "null" {
+		t.Errorf("nextStop = %s at the end of a journey, want null", got)
+	}
+}
+
 func TestAPositionKeepsEveryFieldTheMapReads(t *testing.T) {
 	got := keys(t, train.Position{})
 	requireKeys(t, got,
