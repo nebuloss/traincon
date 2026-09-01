@@ -86,7 +86,7 @@ const fixture = path.join(ROOT, 'data', 'leak-hunt-feed.pb');
 if (!existsSync(fixture)) {
   const url =
     process.env['SNCF_FEED_URL'] ??
-    'https://proxy.transport.data.gouv.fr/resource/sncf-all-gtfs-rt-trip-updates';
+    'https://proxy.transport.data.gouv.fr/resource/sncf-gtfs-rt-trip-updates';
   process.stdout.write('capturing one feed to replay… ');
   const res = await fetch(url, { headers: { 'accept-encoding': 'gzip' } });
   if (!res.ok) throw new Error(`capture failed: HTTP ${res.status}`);
