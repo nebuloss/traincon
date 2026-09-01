@@ -19,6 +19,7 @@ import { MAX_SNAP_M, snapToLine, snapToTrack } from '../core/TrackSnap.ts';
 import type { Line, Point } from '../core/TrackSnap.ts';
 import { keepsLeft } from '../core/RunningSide.ts';
 import { ensureLivery, iconScale } from '../core/TrainArt.ts';
+import { plausibleSpeed } from '../../shared/stock.ts';
 import { distanceFraction } from '../../shared/motion.ts';
 import { Theme } from '../core/Theme.ts';
 import type { Api } from '../core/Api.ts';
@@ -686,7 +687,10 @@ export class MapView {
           // Corrections are absorbed by adjusting the drawn speed, so the
           // train never jumps and never reverses — it just runs a little fast
           // or a little slow until it agrees with the model again.
-          const drawKm = this.reckoner.follow(km, kmh, sinceLast);
+          // What this train on this line could actually do, so closing a
+          // gap cannot draw it faster than that.
+          const canDo = plausibleSpeed(Infinity, t.family, p.limitKmh);
+          const drawKm = this.reckoner.follow(km, kmh, sinceLast, canDo);
           this.drawnKm = drawKm;
           const here = this.track.at(drawKm);
           if (here) {

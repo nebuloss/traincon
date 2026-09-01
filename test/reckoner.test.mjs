@@ -130,3 +130,63 @@ test('reset makes the next position a fresh start', () => {
   assert.equal(r.current, null);
   assert.equal(r.follow(3, 200, FRAME), 3);
 });
+
+// ── the catch-up is still bound by what the train can do ─────────────────────
+//
+// The reported speed is already held to the line and the stock, but the
+// catch-up allowance sat on top of it, so a TER reported at its 160 ceiling
+// was drawn covering ground at 256 to close a gap. Being late is not a
+// dispensation.
+
+/** Peak drawn speed, km/h, inferred from how far it actually moved. */
+function fastestKmh(r, target, kmh, ms, maxKmh) {
+  let prev = r.current ?? 0;
+  let peak = 0;
+  for (let t = 0; t < ms; t += FRAME) {
+    const now = r.follow(target, kmh, FRAME, maxKmh);
+    peak = Math.max(peak, (now - prev) / (FRAME / 3_600_000));
+    prev = now;
+  }
+  return peak;
+}
+
+test('a late TER does not close the gap at 256 km/h', () => {
+  const r = new Reckoner();
+  r.follow(10, 160, FRAME, 160);
+  // A revision puts the model 2 km ahead: the gap the catch-up exists for.
+  const peak = fastestKmh(r, 12, 160, 4000, 160);
+  assert.ok(peak <= 160 + 1e-6, `drew ${peak.toFixed(0)} km/h on a 160 ceiling`);
+});
+
+test('without a ceiling the old behaviour is what it was', () => {
+  // Guards the test above against passing for the wrong reason: the same gap,
+  // with no limit given, still uses the 1.6x catch-up allowance.
+  const r = new Reckoner();
+  r.follow(10, 160, FRAME);
+  const peak = fastestKmh(r, 12, 160, 4000, Infinity);
+  assert.ok(peak > 200, `catch-up allowance gone: only ${peak.toFixed(0)} km/h`);
+});
+
+test('a stopped train can still be nudged, but not past the line', () => {
+  // MIN_CATCHUP_KMH exists so a train the model says is stopped can still be
+  // corrected. It must not become a way around a slow line.
+  const r = new Reckoner();
+  r.follow(10, 0, FRAME, 20);
+  const peak = fastestKmh(r, 10.5, 0, 4000, 20);
+  assert.ok(peak > 0, 'a stopped train can still be corrected');
+  assert.ok(peak <= 20 + 1e-6, `drew ${peak.toFixed(0)} km/h on a 20 ceiling`);
+});
+
+test('the ceiling never makes the train reverse', () => {
+  // The no-reversal guarantee is the one thing that must survive every change.
+  const r = new Reckoner();
+  let last = r.follow(20, 200, FRAME, 200);
+  for (let round = 0; round < 8; round++) {
+    const target = 20 - round * 0.05;
+    for (let t = 0; t < 10_000; t += FRAME) {
+      const now = r.follow(target, 200, FRAME, 200);
+      assert.ok(now >= last - 1e-9, `reversed: ${last} -> ${now}`);
+      last = now;
+    }
+  }
+});

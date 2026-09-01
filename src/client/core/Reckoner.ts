@@ -52,9 +52,10 @@ export class Reckoner {
    * @param target   modelled position, km along the route
    * @param kmh      speed the train is reported to be doing
    * @param dtMs     milliseconds since the last call
+   * @param maxKmh   what the line and the stock allow, if known
    * @returns        where to draw it, km along the route
    */
-  follow(target: number, kmh: number, dtMs: number): number {
+  follow(target: number, kmh: number, dtMs: number, maxKmh = Infinity): number {
     if (this.shown === null || Math.abs(target - this.shown) > SNAP_KM) {
       this.shown = target;
       return target;
@@ -70,7 +71,15 @@ export class Reckoner {
     // train's own. Positive gap means the model is ahead and it hurries;
     // negative means it has overrun and eases off.
     const correction = gap / (HORIZON_MS / 3_600_000);
-    const ceiling = Math.max(kmh * MAX_FACTOR, MIN_CATCHUP_KMH);
+    // Catching up is still running, and running is still bounded by the line
+    // and the stock. The reported speed is already held to both, but the
+    // catch-up allowance sat on top of it: a TER reported at its 160 ceiling
+    // was drawn covering ground at 256 to close a gap, which is how a regional
+    // unit came to be seen doing speeds it does not have. Being late is not a
+    // dispensation — a delayed train closes its gap by taking longer, which is
+    // what a real one does.
+    const physical = maxKmh > 0 ? maxKmh : Infinity;
+    const ceiling = Math.min(physical, Math.max(kmh * MAX_FACTOR, MIN_CATCHUP_KMH));
 
     // Never below zero: that is the whole guarantee. A train that has overrun
     // slows, stops if it must, and waits to be caught up — it does not reverse.
