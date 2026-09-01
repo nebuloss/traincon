@@ -362,10 +362,10 @@ type queued struct {
 // when it surfaces, which is cheaper than maintaining positions.
 type nodeQueue []queued
 
-func (q nodeQueue) Len() int            { return len(q) }
-func (q nodeQueue) Less(i, j int) bool  { return q[i].hours < q[j].hours }
-func (q nodeQueue) Swap(i, j int)       { q[i], q[j] = q[j], q[i] }
-func (q *nodeQueue) Push(x any)         { *q = append(*q, x.(queued)) }
+func (q nodeQueue) Len() int           { return len(q) }
+func (q nodeQueue) Less(i, j int) bool { return q[i].hours < q[j].hours }
+func (q nodeQueue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
+func (q *nodeQueue) Push(x any)        { *q = append(*q, x.(queued)) }
 func (q *nodeQueue) Pop() any {
 	old := *q
 	n := len(old)

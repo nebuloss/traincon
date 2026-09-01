@@ -229,14 +229,14 @@ func TestParsePK(t *testing.T) {
 		want  float64
 		valid bool
 	}{
-		{"629+739", 629.739, true},   // the export's own notation
-		{"0+000", 0, true},           // the start of a line
-		{"-3+500", -3.5, true},       // lines run negative before their origin
-		{" 12+050 ", 12.05, true},    // padded
-		{"42.7", 42.7, true},         // already decimal
-		{"42,7", 42.7, true},         // decimal comma
-		{"", 0, false},               // absent, which is ordinary in this export
-		{"not a pk", 0, false},       //
+		{"629+739", 629.739, true}, // the export's own notation
+		{"0+000", 0, true},         // the start of a line
+		{"-3+500", -3.5, true},     // a line runs negative before its origin
+		{" 12+050 ", 12.05, true},  // padded
+		{"42.7", 42.7, true},       // already decimal
+		{"42,7", 42.7, true},       // decimal comma
+		{"", 0, false},             // absent, which is ordinary in this export
+		{"not a pk", 0, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.in, func(t *testing.T) {
@@ -261,11 +261,11 @@ func TestSpeedIndex(t *testing.T) {
 	})
 
 	tests := []struct {
-		name           string
-		code           string
-		pkA, pkB       float64
-		haveA, haveB   bool
-		want           float64
+		name         string
+		code         string
+		pkA, pkB     float64
+		haveA, haveB bool
+		want         float64
 	}{
 		{"inside the fast span", "420000", 10, 20, true, true, 320},
 		{"inside the slow span", "420000", 150, 160, true, true, 160},

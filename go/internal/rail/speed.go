@@ -37,6 +37,14 @@ func parsePK(v string) (float64, bool) {
 		whole, err1 := strconv.ParseFloat(m[1], 64)
 		metres, err2 := strconv.ParseFloat(m[2], 64)
 		if err1 == nil && err2 == nil {
+			// The fraction runs the same way as the whole part: "-3+500" is
+			// 3.5 km before the origin, not 2.5. The TypeScript adds it
+			// unconditionally, which is wrong — but no negative kilometre
+			// point occurs in the export (0 of 4 694), so the two agree on
+			// every value either has ever seen.
+			if strings.HasPrefix(m[1], "-") {
+				return whole - metres/1000, true
+			}
 			return whole + metres/1000, true
 		}
 	}
