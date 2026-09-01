@@ -225,18 +225,18 @@ type Quality struct {
 
 // Position is where a train is, and how well that is known.
 type Position struct {
-	Basis       Basis       `json:"basis"`
-	Lat         float64     `json:"lat"`
-	Lon         float64     `json:"lon"`
-	Bearing     float64     `json:"bearing"`
-	Progress    float64     `json:"progress"`
-	LegProgress *float64    `json:"legProgress,omitempty"`
-	FromStop    string      `json:"fromStop,omitempty"`
-	AtStation   string      `json:"atStation,omitempty"`
-	NextStop    *string     `json:"nextStop"`
-	LegKm       *float64    `json:"legKm,omitempty"`
-	DistKm      *float64    `json:"distKm,omitempty"`
-	SpeedKmh    float64     `json:"speedKmh"`
+	Basis       Basis    `json:"basis"`
+	Lat         float64  `json:"lat"`
+	Lon         float64  `json:"lon"`
+	Bearing     float64  `json:"bearing"`
+	Progress    float64  `json:"progress"`
+	LegProgress *float64 `json:"legProgress,omitempty"`
+	FromStop    string   `json:"fromStop,omitempty"`
+	AtStation   string   `json:"atStation,omitempty"`
+	NextStop    *string  `json:"nextStop"`
+	LegKm       *float64 `json:"legKm,omitempty"`
+	DistKm      *float64 `json:"distKm,omitempty"`
+	SpeedKmh    float64  `json:"speedKmh"`
 	// AvgKmh is present only where the leg was routed: a straight-line
 	// fallback has no track distance to average over.
 	AvgKmh      *float64    `json:"avgKmh,omitempty"`
