@@ -386,7 +386,7 @@ export class TrainStore {
       meta: serviceMeta(train.service),
       rec,
       view,
-      delay,
+      delay: rec?.delay ?? view.currentDelay(now),
     };
   }
 
@@ -443,7 +443,7 @@ export class TrainStore {
       destination: view.destination,
       calls: view.calls,
       cancelled: view.cancelled,
-      delay: rec?.delay ?? view.currentDelay(now),
+      delay,
       ownDelay: own,
       worstDelay: train.worstDelay,
       position: this.couples.positions.get(train.number) ?? view.positionAt(now, this.rail),
