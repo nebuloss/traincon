@@ -199,7 +199,11 @@ func (c *Client) attempt(ctx context.Context, client *http.Client) (*rt.FeedMess
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept-Encoding", "gzip")
+	// Deliberately not setting Accept-Encoding. The transport adds it and
+	// decompresses the reply transparently — but only while the header is left
+	// alone: setting it by hand means the caller has taken responsibility, and
+	// the body arrives still compressed. Doing so fed gzip to the protobuf
+	// decoder, which reported "cannot parse invalid wire-format data".
 
 	res, err := client.Do(req)
 	if err != nil {
