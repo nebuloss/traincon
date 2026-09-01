@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
 )
 
 // The site's own card, for any page that is not about one train.
