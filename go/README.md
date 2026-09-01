@@ -1,18 +1,26 @@
 # traincon — Go backend
 
-A port of `src/server/`, in progress. The TypeScript server is still the one
-that runs; this tree is built and tested alongside it until it can replace it.
+A port of `src/server/`. Every package is ported and the binary serves the
+whole API. The TypeScript server is still the one in production; this runs
+alongside it until it has been watched for long enough to swap.
 
 ## Why
 
 Measured on the running server, not assumed:
 
+Both servers on the same captured feed, 1 075 trains:
+
 | | TypeScript | Go |
 |---|---|---|
+| heap | 102 MB | **80 MB** |
+| resident | 238 MB | **110 MB** |
+| boot | seconds | **under a second** |
 | rail graph | 66.1 MB (365 B/node) | **12.8 MB (71 B/node)** |
 | graph load | seconds | **215 ms** |
 | static schedule load | — | **40 ms** |
 | route Paris–Marseille | — | **6.7 ms, 24 allocations** |
+| `/api/trains` | 17.3 ms | **~9 ms** |
+| `/api/trains?light=1` | 6.9 ms | **~3 ms** |
 
 The graph is the whole argument: 181 290 nodes and 363 946 directed edges
 holding 12.4 MB of actual numbers. V8 charges an object header per node because
@@ -28,6 +36,14 @@ node's edges are a contiguous range of three flat arrays.
     internal/rail/       the routing graph, line speeds, Dijkstra, path cache
     internal/motion/     where along a leg a train has got to
     internal/train/      legs, delays, observation quality, and position
+    internal/headway/    what the traffic ahead implies
+    internal/coupling/   units running joined, and their one true delay
+    internal/blocks/     how closely one train may follow another
+    internal/signals/    where the signals are, and which can stop a train
+    internal/board/      the day's worst delays, kept past the feed window
+    internal/disruptions/ why trains are late
+    internal/store/      the live picture, and everything served from it
+    internal/api/        the JSON API and the client bundle
 
 ## Build and test
 
@@ -58,8 +74,16 @@ compared, because "it looks right" is not a check:
 - **feed decode** — 1 075 trains from the same capture the TypeScript harness
   replays, which exercises the id pattern, the stop lookup, the two-call
   minimum and the join against the schedule.
+- **the whole API** — both servers run on the same capture and every train is
+  compared field by field. **992 of 1 040 identical**; the remaining 48 differ
+  only in values that move with the clock, which the three-second skew between
+  the two responses accounts for (`ageSec` 6 480 against 6 477).
 
-These are the tests to keep green while the rest is ported.
+That last comparison found four contract breaks that unit tests would not
+have: calls serialised with Go field names rather than the client's, `next`
+reduced to three fields where the full DTO carries the whole call, `avgKmh`
+emitted on straight-line geometry where it has nothing to average, and an
+unknown service marker sent as `""` rather than `null`.
 
 ## Dependencies
 
@@ -88,12 +112,19 @@ recorded where they live:
 
 Everything else is faithful, and pinned by the equivalence tests above.
 
-## Still to port
+## Not yet done
 
-`TrainStore`, `Headway`, `Signals`, `Blocks`, `DailyBoard`, `Disruptions`,
-`CouplingDetector` and the HTTP layer — about 1 800 lines. The
-client stays TypeScript and needs no changes: the contract between them is
+- `/api/rail.geojson` answers 404. The client tolerates it by drawing no
+  background rail layer, but the thinned network still has to be built and
+  gzipped at boot.
+- `internal/store` has no unit tests of its own. It is covered by the
+  field-by-field comparison against the TypeScript server, which is the
+  stronger check but is run by hand rather than by `go test`.
+- Nothing is deployed. The service definition in `install.sh` still starts the
+  Node server.
+
+The client stays TypeScript and needs no changes: the contract between them is
 JSON, and the only behaviour shared across the boundary is `plausibleSpeed` and
-`deeplink`, under 40 lines. `distanceFraction` is client-only — the server
-sends the profile, the client evaluates it — so there is no motion model to
+`deeplink`, under 40 lines. `distanceFraction` is client-only — the server sends
+the profile, the client evaluates it — so there is no motion model to
 duplicate.
