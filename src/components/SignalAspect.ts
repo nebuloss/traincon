@@ -47,7 +47,7 @@ import { Format } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
 import { signalKey } from '../core/SignalArt.ts';
 import type { SignalKey } from '../core/SignalArt.ts';
-import type { TrainDTO } from '../../shared/types.ts';
+import type { TrainDTO } from '../types.ts';
 
 type Aspect = NonNullable<TrainDTO['traffic']>['aspect'];
 type Kind = NonNullable<TrainDTO['traffic']>['signalKind'];

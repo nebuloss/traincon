@@ -24,7 +24,7 @@ import emuCab from '../assets/train/emu-cab.svg?raw';
 import emuMid from '../assets/train/emu-mid.svg?raw';
 import { LIVERY } from '../components/TrainIcon.ts';
 import type { LiveryKey } from '../components/TrainIcon.ts';
-import type { VehicleRole } from '../../shared/types.ts';
+import type { VehicleRole } from '../types.ts';
 
 /** The drawing for each kind of vehicle. */
 export const ART: Readonly<Record<VehicleRole, string>> = {

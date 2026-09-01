@@ -11,12 +11,12 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CLIENT = path.join(ROOT, 'src/client');
+const CLIENT = path.join(ROOT, 'src');
 
 const src = await readFile(path.join(CLIENT, 'core/I18n.ts'), 'utf8');
 const html = await readFile(path.join(CLIENT, 'index.html'), 'utf8');
 
-/** Every .ts under src/client, concatenated — the interface source. */
+/** Every .ts under src, concatenated — the interface source. */
 async function clientSources(dir = CLIENT) {
   const out = [];
   for (const e of await readdir(dir, { withFileTypes: true })) {

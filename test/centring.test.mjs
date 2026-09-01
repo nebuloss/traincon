@@ -132,7 +132,7 @@ test('the component has the same guards', async () => {
   const { fileURLToPath } = await import('node:url');
   const path = await import('node:path');
   const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const src = await readFile(path.join(root, 'src/client/components/MapView.ts'), 'utf8');
+  const src = await readFile(path.join(root, 'src/components/MapView.ts'), 'utf8');
 
   const fn = src.slice(src.indexOf('private centreOnTrain('), src.indexOf('private nearbyTrack('));
   assert.match(fn, /if \(this\.centring\) return;/, 're-entrancy guard');

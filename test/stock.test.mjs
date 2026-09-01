@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { STOCK_MAX_KMH, plausibleSpeed } = await import(path.join(ROOT, 'src/shared/stock.ts'));
+const { STOCK_MAX_KMH, plausibleSpeed } = await import(path.join(ROOT, 'src/core/stock.ts'));
 
 test('a TER cannot do 266', () => {
   // The report this exists for, with the numbers it had.

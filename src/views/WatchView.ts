@@ -9,8 +9,8 @@ import { TrainCard, starButton } from '../components/TrainCard.ts';
 import type { Alerts } from '../components/Banner.ts';
 import type { Api } from '../core/Api.ts';
 import type { Bookmarks } from '../core/Bookmarks.ts';
-import { missingKind } from '../../shared/missing.ts';
-import type { TrainDTO, TrainNotFound } from '../../shared/types.ts';
+import { missingKind } from '../core/missing.ts';
+import type { TrainDTO, TrainNotFound } from '../types.ts';
 
 export class WatchView {
   constructor(

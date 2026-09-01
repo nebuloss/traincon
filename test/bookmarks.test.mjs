@@ -29,7 +29,7 @@ function stubStorage() {
 }
 
 const store = stubStorage();
-const { Bookmarks } = await import(path.join(ROOT, 'src/client/core/Bookmarks.ts'));
+const { Bookmarks } = await import(path.join(ROOT, 'src/core/Bookmarks.ts'));
 
 function fresh() {
   store.clear();
@@ -76,7 +76,7 @@ test('a coupled set is removed as one', () => {
 
 // ── telling the two kinds of miss apart ──────────────────────────────────────
 
-const { missingKind } = await import(path.join(ROOT, 'src/shared/missing.ts'));
+const { missingKind } = await import(path.join(ROOT, 'src/core/missing.ts'));
 
 test('a train in the timetable but not running is dormant', () => {
   assert.equal(
@@ -106,8 +106,8 @@ test('the missing-bookmark card offers no click affordance', async () => {
   // Twice now the card stopped opening but still advertised that it would:
   // first a data-open that no longer had a modal behind it, then the hand
   // cursor .card sets for every card. Both are checked here.
-  const view = await readFile(path.join(ROOT, 'src/client/views/WatchView.ts'), 'utf8');
-  const css = await readFile(path.join(ROOT, 'src/client/style.css'), 'utf8');
+  const view = await readFile(path.join(ROOT, 'src/views/WatchView.ts'), 'utf8');
+  const css = await readFile(path.join(ROOT, 'src/style.css'), 'utf8');
 
   const body = view.slice(view.indexOf('private static missingCard'));
   const card = body.slice(0, body.indexOf('\n  }\n'));
@@ -123,7 +123,7 @@ test('the missing-bookmark card offers no click affordance', async () => {
 });
 
 test('the actions inside it are still clickable', async () => {
-  const css = await readFile(path.join(ROOT, 'src/client/style.css'), 'utf8');
+  const css = await readFile(path.join(ROOT, 'src/style.css'), 'utf8');
   // Making the card inert must not disarm the star or the remove button.
   for (const sel of ['.star {', '.link-btn {']) {
     const rule = css.slice(css.indexOf(sel));

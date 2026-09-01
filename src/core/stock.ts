@@ -28,7 +28,7 @@
  *   other  160   navettes and unclassified passenger services.
  */
 
-import type { Family } from './types.ts';
+import type { Family } from '../types.ts';
 
 export const STOCK_MAX_KMH: Readonly<Record<Family, number>> = {
   tgv: 320,

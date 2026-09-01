@@ -8,7 +8,7 @@
 
 import { Format } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
-import type { StatsDTO } from '../../shared/types.ts';
+import type { StatsDTO } from '../types.ts';
 
 type Kind = 'down' | 'stale' | 'replay';
 

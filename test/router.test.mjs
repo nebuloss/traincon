@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { Router } = await import(path.join(ROOT, 'src/client/core/Router.ts'));
+const { Router } = await import(path.join(ROOT, 'src/core/Router.ts'));
 
 /** Router.read accepts a URL, so no DOM is needed. */
 const read = (href) => Router.read(new URL(href, 'https://traincon.example'));
@@ -155,7 +155,7 @@ test('navigating to the URL already shown writes no history entry', () => {
  * source because driving App itself would mean pulling in a DOM.
  */
 test('nothing opens the modal behind the router back', async () => {
-  const app = await readFile(path.join(ROOT, 'src/client/App.ts'), 'utf8');
+  const app = await readFile(path.join(ROOT, 'src/App.ts'), 'utf8');
 
   const body = (name) => {
     const m = app.match(new RegExp(`\\n  private (?:async )?${name}\\([^]*?\\n  \\}`));
@@ -250,7 +250,7 @@ test('closing a train returns to a tab, not always the root', () => {
  * cleared.
  */
 test('a refresh asked for mid-render is queued, not dropped', async () => {
-  const app = await readFile(path.join(ROOT, 'src/client/App.ts'), 'utf8');
+  const app = await readFile(path.join(ROOT, 'src/App.ts'), 'utf8');
   const render = app.slice(app.indexOf('  async render()'));
   const body = render.slice(0, render.indexOf('\n  private async renderOnce'));
 
@@ -261,7 +261,7 @@ test('a refresh asked for mid-render is queued, not dropped', async () => {
 test('the rendering flag is cleared in a finally', async () => {
   // It was not, so a single throw froze every later refresh for the life of
   // the page — the whole interface silently stopped updating.
-  const app = await readFile(path.join(ROOT, 'src/client/App.ts'), 'utf8');
+  const app = await readFile(path.join(ROOT, 'src/App.ts'), 'utf8');
   const render = app.slice(app.indexOf('  async render()'));
   const body = render.slice(0, render.indexOf('\n  private async renderOnce'));
 

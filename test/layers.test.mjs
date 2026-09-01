@@ -14,8 +14,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const src = await readFile(path.join(ROOT, 'src/client/components/MapView.ts'), 'utf8');
-const css = await readFile(path.join(ROOT, 'src/client/style.css'), 'utf8');
+const src = await readFile(path.join(ROOT, 'src/components/MapView.ts'), 'utf8');
+const css = await readFile(path.join(ROOT, 'src/style.css'), 'utf8');
 
 /** The layer ids in the order addLayer is called with them. */
 const added = [...src.matchAll(/id: '([\w-]+)',\n\s*type: '(?:line|fill|circle|symbol)'/g)].map(

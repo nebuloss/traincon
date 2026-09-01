@@ -92,6 +92,50 @@ port 3000. Re-run the same command to update — `data/` is preserved so the
 | `GOMEMLIMIT` | 80% of the container | soft ceiling; the collector works harder rather than the process dying |
 | `PUBLIC_URL` | — | pins the origin in the link-preview tags; derived from the request otherwise |
 
+## On a machine with nothing on it
+
+Verified, not assumed: a bare Alpine LXC container, 1 core, 512 MB of memory,
+2 GB of disk, network and nothing else. No Node, no Go, no curl, no API key.
+
+```bash
+wget -qO- https://raw.githubusercontent.com/nebuloss/traincon/main/install.sh | sh
+```
+
+The script picks the build for the machine's architecture, checks it against
+the release's published digest, downloads the data, creates the service user,
+writes the service and starts it. It ends with the number of trains it is
+tracking, which is the useful confirmation — an install that gets that far is
+working.
+
+What it reaches for, all public and none needing an account:
+
+| what | from |
+| --- | --- |
+| the installer | raw.githubusercontent.com |
+| the release, by tag | api.github.com, then the release assets |
+| the server | `traincon-linux-{amd64,arm64,armv7}`, verified against `SHA256SUMS` |
+| the client bundle | `traincon.tar.gz`, built by CI |
+| signal positions | `signals.json.gz` on the release |
+| rail geometry, line speeds, block modes | SNCF Réseau open data |
+
+And, in the browser rather than at install time: MapLibre from unpkg, the
+basemap from CARTO, and the surveyed track tiles from carto.tchoo.net.
+
+What it does not need:
+
+* **No runtime.** The server is one static binary. The client is compiled to
+  JavaScript by CI, so nothing on the target ever sees TypeScript.
+* **No package manager.** `curl` and `tar` are the whole list of requirements.
+* **No API key.** The schedule, the real-time feed and the geometry are all
+  open data. A key adds disruption reasons; without one the installer says so
+  and carries on.
+* **No build step.** The artwork — six vehicle drawings, four signal drawings,
+  the icons — is inlined into the bundle, so there are no separate asset files
+  to go missing.
+
+Updating is the same command. `data/` is preserved, so the geometry is not
+downloaded again.
+
 ## Development
 
 A Go server and a TypeScript client. The server is one static binary with two
@@ -116,14 +160,14 @@ go/internal/rail/     the routing graph, and paths over it
 go/internal/train/    legs, delays, position
 go/internal/store/    the live picture, and everything served from it
 go/internal/api/      the JSON API and the bundle
-src/shared/types.ts   the API contract the client reads
-src/client/core/      I18n · Api · Cache · Format · Bookmarks · Theme
-src/client/components Timeline · TrainCard · MapView · TrainModal · Banner
-src/client/views/     WatchView · SearchView
-tools/                standalone diagnostics (onboard GPS)
+src/types.ts          the API contract the client reads
+src/core/             I18n · Api · Cache · Format · Bookmarks · Theme
+src/components/       Timeline · TrainCard · MapView · TrainModal · Banner
+src/views/            WatchView · SearchView
+scripts/              fetch-geo.sh, and standalone diagnostics
 ```
 
-The contract between the two is JSON, not code. `src/shared/types.ts` declares
+The contract between the two is JSON, not code. `src/types.ts` declares
 what the client expects and `go/internal/store` produces it, so the two can no
 longer be kept in agreement by the compiler — `go/internal/store/contract_test.go`
 does it instead, pinning every field name and every value that must be null
@@ -138,7 +182,6 @@ so there is one curve rather than two implementations of one.
 The upstream feed goes down regularly, so development does not depend on it:
 
 ```bash
-npm run dev:replay    # replays fixtures/sncf-trip-updates.pb
 ```
 
 `SNCF_FEED_SHIFT=auto` (the default) rebases a capture's timestamps onto the

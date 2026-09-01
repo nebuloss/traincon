@@ -12,7 +12,7 @@ import { tr } from '../core/I18n.ts';
 import { trainRow } from '../components/TrainRow.ts';
 import type { Api } from '../core/Api.ts';
 import type { Bookmarks } from '../core/Bookmarks.ts';
-import type { SuggestionDTO } from '../../shared/types.ts';
+import type { SuggestionDTO } from '../types.ts';
 
 export class SearchView {
   query = '';

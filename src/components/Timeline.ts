@@ -13,7 +13,7 @@
 
 import { Format } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
-import type { Call, TrainDTO } from '../../shared/types.ts';
+import type { Call, TrainDTO } from '../types.ts';
 import { familyColor, familyGlyph } from './TrainIcon.ts';
 
 /** Keep in sync with --row-h in the stylesheet. */

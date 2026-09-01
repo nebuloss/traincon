@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { distanceFraction } = await import(path.join(ROOT, 'src/shared/motion.ts'));
+const { distanceFraction } = await import(path.join(ROOT, 'src/core/motion.ts'));
 
 /** A leg that covers half its distance in the first tenth of its time. */
 const frontLoaded = [0, 0.5, 1];

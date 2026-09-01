@@ -12,9 +12,9 @@ import { Timeline } from './Timeline.ts';
 import { aspectBlock } from './SignalAspect.ts';
 import { starButton } from './TrainCard.ts';
 import { MapView, type MapMode } from './MapView.ts';
-import { missingKind } from '../../shared/missing.ts';
+import { missingKind } from '../core/missing.ts';
 import type { Api } from '../core/Api.ts';
-import type { Confidence, MissingReason, TrainDTO } from '../../shared/types.ts';
+import type { Confidence, MissingReason, TrainDTO } from '../types.ts';
 
 export type ModalTab = 'apercu' | 'trajet' | 'carte' | 'journal';
 

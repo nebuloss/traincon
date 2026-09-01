@@ -13,12 +13,12 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { Track } = await import(path.join(ROOT, 'src/client/core/Track.ts'));
+const { Track } = await import(path.join(ROOT, 'src/core/Track.ts'));
 const { VEHICLE_M, consist, consistLength, trainCars } = await import(
-  path.join(ROOT, 'src/client/core/TrainBody.ts')
+  path.join(ROOT, 'src/core/TrainBody.ts')
 );
 
-const ART_DIR = path.join(ROOT, 'src/client/assets/train');
+const ART_DIR = path.join(ROOT, 'src/assets/train');
 const ART_FILE = {
   power: 'power-car',
   artic: 'coach-artic',

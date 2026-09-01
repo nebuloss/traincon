@@ -13,7 +13,7 @@
  * it lives in core/TrainBody.
  */
 
-import type { Family, TrainDTO } from '../../shared/types.ts';
+import type { Family, TrainDTO } from '../types.ts';
 
 /** Typical length of one unit, metres. */
 const LENGTH_M: Readonly<Record<Family, number>> = {

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { Track } = await import(path.join(ROOT, 'src/client/core/Track.ts'));
+const { Track } = await import(path.join(ROOT, 'src/core/Track.ts'));
 
 /** A due-east line at latitude 48, in GeoJSON [lon, lat] order. */
 function eastward(points, stepDeg = 0.01) {

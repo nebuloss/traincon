@@ -13,7 +13,7 @@ import path from 'node:path';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { PLAN_ZOOM, WIDTH_M, discView, familyColor, familyGlyph, metresPerPixel, trainLengthM } =
   await import(
-  path.join(ROOT, 'src/client/components/TrainIcon.ts')
+  path.join(ROOT, 'src/components/TrainIcon.ts')
 );
 
 const train = (family, coupledWith = []) => ({ number: '8540', family, coupledWith });

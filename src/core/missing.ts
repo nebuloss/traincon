@@ -1,12 +1,12 @@
 /**
  * Reading a lookup that came back empty.
  *
- * Lives in shared/ because it interprets the API contract rather than any one
+ * Sits in core/ because it interprets the API contract rather than any one
  * screen: the bookmark list uses it to decide how to draw the card, and the
  * modal uses it to decide whether there is anything worth opening.
  */
 
-import type { MissingReason, TrainNotFound } from './types.ts';
+import type { MissingReason, TrainNotFound } from '../types.ts';
 
 /**
  * Which kind of miss this is.

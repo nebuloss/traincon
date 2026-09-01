@@ -15,7 +15,7 @@ import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { FAST_KMH, inAlsaceMoselle, keepsLeft } = await import(
-  path.join(ROOT, 'src/client/core/RunningSide.ts')
+  path.join(ROOT, 'src/core/RunningSide.ts')
 );
 
 /** Somewhere on a classic line, at a classic line speed. */

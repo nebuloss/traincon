@@ -16,7 +16,7 @@
  * English too, so a link shared from the English interface reads naturally.
  */
 
-import { TRAIN_NUMBER, trainFromPath, trainFromQuery } from '../../shared/deeplink.ts';
+import { TRAIN_NUMBER, trainFromPath, trainFromQuery } from './deeplink.ts';
 import type { ModalTab } from '../components/TrainModal.ts';
 
 /** The three top-level tabs. Defined here because the URL is their identity. */

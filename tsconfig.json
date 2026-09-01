@@ -19,5 +19,5 @@
     "exactOptionalPropertyTypes": false,
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src/client", "src/shared", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"]
 }

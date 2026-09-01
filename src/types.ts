@@ -301,7 +301,7 @@ export type JourneyLine = Feature<
     legsWithGeometry: number;
     legs: number;
     /**
-     * One motion profile per leg, in call order — see shared/motion.ts.
+     * One motion profile per leg, in call order — see core/motion.ts.
      *
      * Lets the map compute positions with the same model the server uses,
      * rather than assuming constant speed between updates. Empty for a leg

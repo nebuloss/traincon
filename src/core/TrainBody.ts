@@ -27,7 +27,7 @@
  */
 
 import { Track } from './Track.ts';
-import type { Family, TrainCarsGeo, VehicleRole } from '../../shared/types.ts';
+import type { Family, TrainCarsGeo, VehicleRole } from '../types.ts';
 
 /** Real length of each vehicle, metres. */
 export const VEHICLE_M: Readonly<Record<VehicleRole, number>> = {

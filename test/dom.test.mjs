@@ -15,9 +15,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CLIENT = path.join(ROOT, 'src/client');
+const CLIENT = path.join(ROOT, 'src');
 
-/** Every .ts under src/client, with its path. */
+/** Every .ts under src, with its path. */
 async function sources(dir = CLIENT) {
   const out = [];
   for (const e of await readdir(dir, { withFileTypes: true })) {

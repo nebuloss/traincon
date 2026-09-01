@@ -10,7 +10,7 @@
 
 import { Format, statusSentence } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
-import type { TrainDTO } from '../../shared/types.ts';
+import type { TrainDTO } from '../types.ts';
 
 /** The star, which may carry several numbers for a coupled set. */
 export function starButton(spec: string, isWatched: (n: string) => boolean): string {

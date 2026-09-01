@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { LIVERY, liveryOf } = await import(path.join(ROOT, 'src/client/components/TrainIcon.ts'));
+const { LIVERY, liveryOf } = await import(path.join(ROOT, 'src/components/TrainIcon.ts'));
 
 const srgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
 const lin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);

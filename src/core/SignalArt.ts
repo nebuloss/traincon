@@ -14,7 +14,7 @@
  * permissiveness nothing has established.
  */
 
-import type { TrainDTO } from '../../shared/types.ts';
+import type { TrainDTO } from '../types.ts';
 
 type Aspect = NonNullable<TrainDTO['traffic']>['aspect'];
 type Kind = NonNullable<TrainDTO['traffic']>['signalKind'];

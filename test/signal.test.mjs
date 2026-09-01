@@ -23,9 +23,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { signalKey } = await import(path.join(ROOT, 'src/client/core/SignalArt.ts'));
+const { signalKey } = await import(path.join(ROOT, 'src/core/SignalArt.ts'));
 
-const ART_DIR = path.join(ROOT, 'src/client/assets/signal');
+const ART_DIR = path.join(ROOT, 'src/assets/signal');
 const KEYS = ['vl', 'a', 'semaphore', 'carre'];
 const art = Object.fromEntries(
   await Promise.all(

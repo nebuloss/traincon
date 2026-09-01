@@ -19,3 +19,6 @@ traincon-linux-amd64
 *.log
 .claude/
 data/leak-hunt-feed.pb
+
+# A local tool's project config, not this project's source.
+.serena/

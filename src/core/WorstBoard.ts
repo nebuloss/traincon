@@ -11,7 +11,7 @@
  * the view needs a browser to test.
  */
 
-import type { WorstTrainDTO } from '../../shared/types.ts';
+import type { WorstTrainDTO } from '../types.ts';
 
 /** Which trains the board is showing. */
 export type WorstFilter = 'all' | 'live';

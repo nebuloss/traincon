@@ -17,7 +17,7 @@ import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { MAX_ZOOM, MIN_ZOOM, SCREEN_PX_PER_SEC, metresPerPixelAt, zoomForSpeed } = await import(
-  path.join(ROOT, 'src/client/core/Framing.ts')
+  path.join(ROOT, 'src/core/Framing.ts')
 );
 
 /** Pixels a second the train appears to move at, at its chosen zoom. */
@@ -99,7 +99,7 @@ test('the scale matches MapLibre 512-pixel tiles, not the 256 scheme', () => {
 
 test('the map view uses this rule rather than one of its own', async () => {
   const { readFile } = await import('node:fs/promises');
-  const src = await readFile(path.join(ROOT, 'src/client/components/MapView.ts'), 'utf8');
+  const src = await readFile(path.join(ROOT, 'src/components/MapView.ts'), 'utf8');
   assert.match(src, /from '\.\.\/core\/Framing\.ts'/, 'MapView should import it');
   // And not carry a second copy that could drift from this one.
   assert.ok(!/13 - Math\.log2/.test(src), 'the old formula is still in MapView');

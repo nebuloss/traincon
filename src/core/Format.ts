@@ -7,7 +7,7 @@
  */
 
 import { i18n, tr } from './I18n.ts';
-import type { Position, TrainDTO } from '../../shared/types.ts';
+import type { Position, TrainDTO } from '../types.ts';
 
 /** Delay severity. Red is reserved for cancellations. */
 export type DelayTier = 'ontime' | 'late' | 'verylate' | 'cancelled';

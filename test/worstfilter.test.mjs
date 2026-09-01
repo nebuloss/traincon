@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { pickShown } = await import(path.join(ROOT, 'src/client/core/WorstBoard.ts'));
+const { pickShown } = await import(path.join(ROOT, 'src/core/WorstBoard.ts'));
 
 /** A board row, worst first as the server sends them. */
 const row = (number, delay, live, status = live ? 'running' : 'finished') => ({

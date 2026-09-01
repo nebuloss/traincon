@@ -16,7 +16,7 @@
 import { Format } from '../core/Format.ts';
 import { tr } from '../core/I18n.ts';
 import { starButton } from './TrainCard.ts';
-import type { Family } from '../../shared/types.ts';
+import type { Family } from '../types.ts';
 
 export interface RowTrain {
   number: string;

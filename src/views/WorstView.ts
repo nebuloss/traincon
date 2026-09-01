@@ -23,7 +23,7 @@ import type { Bookmarks } from '../core/Bookmarks.ts';
 import { Prefs } from '../core/Cache.ts';
 import { POOL, pickShown } from '../core/WorstBoard.ts';
 import type { WorstFilter } from '../core/WorstBoard.ts';
-import type { WorstTrainDTO } from '../../shared/types.ts';
+import type { WorstTrainDTO } from '../types.ts';
 
 export class WorstView {
   private filter: WorstFilter = Prefs.get<WorstFilter>('worstFilter', 'all');

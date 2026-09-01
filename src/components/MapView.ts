@@ -19,11 +19,11 @@ import { MAX_SNAP_M, snapToLine, snapToTrack } from '../core/TrackSnap.ts';
 import type { Line, Point } from '../core/TrackSnap.ts';
 import { keepsLeft } from '../core/RunningSide.ts';
 import { ensureLivery, iconScale } from '../core/TrainArt.ts';
-import { plausibleSpeed } from '../../shared/stock.ts';
-import { distanceFraction } from '../../shared/motion.ts';
+import { plausibleSpeed } from '../core/stock.ts';
+import { distanceFraction } from '../core/motion.ts';
 import { Theme } from '../core/Theme.ts';
 import type { Api } from '../core/Api.ts';
-import type { JourneyGeo, JourneyLine, TrainCarsGeo, TrainDTO } from '../../shared/types.ts';
+import type { JourneyGeo, JourneyLine, TrainCarsGeo, TrainDTO } from '../types.ts';
 
 /** MapLibre is loaded from a script tag; this is the surface we rely on. */
 interface MapLike {
@@ -152,7 +152,7 @@ export class MapView {
   private track: Track | null = null;
   /** Distance along `track` of each call, so a leg's extent is known. */
   private stopKm: number[] = [];
-  /** Motion profile per leg, from the server — see shared/motion.ts. */
+  /** Motion profile per leg, from the server — see core/motion.ts. */
   private legProfiles: number[][] = [];
   private readonly reckoner = new Reckoner();
   private animating = false;

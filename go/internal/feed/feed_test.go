@@ -156,12 +156,45 @@ func TestBuildTrainMarksCancellation(t *testing.T) {
 	}
 }
 
-// TestLoadMatchesTheTypeScriptTrainCount replays the same capture the
-// TypeScript harness uses and checks it yields the same trains.
+// TestDecodeTheBundledCapture reads the capture committed beside this test.
 //
-// That server reports 1 075 from this pairing of capture and schedule. Getting
+// It needs no schedule, so it runs anywhere — which matters because everything
+// else that exercises the protobuf path needs the 4 MB GTFS archive and is
+// skipped in CI for want of it. The counts are what the feed actually carried
+// when it was captured.
+func TestDecodeTheBundledCapture(t *testing.T) {
+	msg, err := decodeFile(filepath.Join("testdata", "trip-updates.pb"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	entities, stops := 0, 0
+	for _, e := range msg.GetEntity() {
+		entities++
+		stops += len(e.GetTripUpdate().GetStopTimeUpdate())
+	}
+	if entities == 0 || stops == 0 {
+		t.Fatalf("decoded %d entities and %d stop time updates", entities, stops)
+	}
+	// A feed of trip updates and nothing else: no vehicle positions, no
+	// alerts. If that ever changes, the assumption behind the decode has.
+	for _, e := range msg.GetEntity() {
+		if e.GetVehicle() != nil || e.GetAlert() != nil {
+			t.Fatalf("entity %s carries something other than a trip update", e.GetId())
+		}
+	}
+	if ts := msg.GetHeader().GetTimestamp(); ts == 0 {
+		t.Error("the header carries no timestamp")
+	}
+}
+
+// TestLoadMatchesTheTypeScriptTrainCount replays the same capture the
+// TypeScript harness used and checks it yields the same trains.
+//
+// That server reported 1 075 from this pairing of capture and schedule. Getting
 // the same number means the id pattern, the stop lookup, the two-call minimum
-// and the schedule join all agree — the whole decode, end to end.
+// and the schedule join all agree — the whole decode, end to end. It needs the
+// GTFS archive, so it skips where that is absent.
 func TestLoadMatchesTheTypeScriptTrainCount(t *testing.T) {
 	dir := os.Getenv("TRAINCON_DATA")
 	if dir == "" {
