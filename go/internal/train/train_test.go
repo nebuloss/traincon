@@ -128,7 +128,7 @@ func TestObservationGradesHowStaleTheEstimateIs(t *testing.T) {
 
 func TestObservationBeforeDepartureNamesNoStop(t *testing.T) {
 	obs := journey().ObservationAt(-10)
-	if obs.LastStop != "" || obs.AgeSec != nil {
+	if obs.LastStop != nil || obs.AgeSec != nil {
 		t.Errorf("got %+v, want no last stop", obs)
 	}
 }
