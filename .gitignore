@@ -17,3 +17,4 @@ dist-server/
 .env.local
 *.log
 .claude/
+data/leak-hunt-feed.pb

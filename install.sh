@@ -174,11 +174,25 @@ description="Traincon - live SNCF train tracking"
 command="$(command -v node)"
 command_args="$APP_DIR/dist-server/server/index.js"
 command_user="$SERVICE_USER"
-command_background=true
 directory="$APP_DIR"
 pidfile="/run/\$RC_SVCNAME.pid"
 output_log="$LOG_FILE"
 error_log="$LOG_FILE"
+
+# Supervised, so a crash is a five-second gap rather than an outage.
+#
+# The systemd unit below has always had Restart=always; this side had nothing,
+# and start-stop-daemon does not watch what it starts. The process reached its
+# heap ceiling on five separate days and each time stayed down until someone
+# noticed and ran the service by hand — which needs a stop first, because OpenRC
+# reports a crashed service as already started and refuses to start it again.
+#
+# respawn_max bounds that: ten restarts inside half an hour is a service that
+# cannot start at all, and hammering it will not help.
+supervisor="supervise-daemon"
+respawn_delay=5
+respawn_max=10
+respawn_period=1800
 
 depend() { need net; after firewall; }
 
