@@ -69,12 +69,44 @@ export interface TrainMeta {
   line: string;
 }
 
-/** Minimal CSV reader: the SNCF feed quotes fields containing commas. */
-function parseCsv(text: string): Array<Record<string, string>> {
-  const rows: string[][] = [];
+/**
+ * Stream CSV rows, handing back only the columns asked for.
+ *
+ * The reader this replaces built every row twice — once as a `string[]`, then
+ * again as a `Record<string, string>` with a property per column — and held
+ * the lot until the caller had finished with it. All three files were read and
+ * parsed at once, on top of the tables already in memory, which made a routine
+ * twelve-hourly refresh allocate 209 MB in a burst. Nothing was leaked; the
+ * spike alone was enough to reach the heap ceiling and abort the process.
+ *
+ * Nothing accumulates here: one row array is reused, and the callback is
+ * handed only the fields it named. A column the file does not have arrives as
+ * an empty string rather than throwing, so a schema change degrades the way a
+ * missing value would.
+ */
+function forEachRow(text: string, wanted: string[], cb: (v: readonly string[]) => void): void {
+  let header: string[] | null = null;
+  let at: number[] = [];
+  let width = 0;
+  const out = new Array<string>(wanted.length);
+  const row: string[] = [];
   let field = '';
-  let row: string[] = [];
   let quoted = false;
+
+  const endRow = (): void => {
+    row.push(field);
+    field = '';
+    if (!header) {
+      header = row.map((h) => h.trim());
+      width = header.length;
+      at = wanted.map((w) => header!.indexOf(w));
+    } else if (row.length === width) {
+      for (let k = 0; k < at.length; k++) out[k] = at[k]! >= 0 ? row[at[k]!]! : '';
+      cb(out);
+    }
+    row.length = 0;
+  };
+
   for (let i = 0; i < text.length; i++) {
     const c = text[i]!;
     if (quoted) {
@@ -88,27 +120,10 @@ function parseCsv(text: string): Array<Record<string, string>> {
     else if (c === ',') {
       row.push(field);
       field = '';
-    } else if (c === '\n') {
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = '';
-    } else if (c !== '\r') field += c;
+    } else if (c === '\n') endRow();
+    else if (c !== '\r') field += c;
   }
-  if (field || row.length) {
-    row.push(field);
-    rows.push(row);
-  }
-  const header = rows.shift()!.map((h) => h.trim());
-  return rows
-    .filter((r) => r.length === header.length)
-    .map((r) => {
-      const o: Record<string, string> = {};
-      header.forEach((h, i) => {
-        o[h] = r[i]!;
-      });
-      return o;
-    });
+  if (field || row.length) endRow();
 }
 
 export class GtfsStatic {
@@ -148,9 +163,18 @@ export class GtfsStatic {
     const zip = await GtfsStatic.download(dataDir);
     await exec('unzip', ['-o', '-q', zip, ...WANTED, '-d', dataDir]);
 
-    const [stopRows, tripRows, routeRows] = await Promise.all(
-      WANTED.map(async (f) => parseCsv(await readFile(path.join(dataDir, f), 'utf8'))),
-    );
+    // One file at a time, and only the columns that are used. Reading all
+    // three at once was what made the refresh spike: the texts, the row
+    // arrays and the row objects were all resident together, on top of the
+    // tables still being served from.
+    const read = (f: string): Promise<string> =>
+      readFile(path.join(dataDir, f), 'utf8');
+
+    // Only the line name is ever wanted, so keep that rather than whole rows.
+    const routeName = new Map<string, string>();
+    forEachRow(await read('routes.txt'), ['route_id', 'route_long_name'], (v) => {
+      routeName.set(v[0]!, v[1]!);
+    });
 
     // A single physical station appears under several stop_ids: one StopArea
     // plus one StopPoint per service ("OCETGV INOUI-87673202", "OCEOUIGO-…").
@@ -160,48 +184,51 @@ export class GtfsStatic {
     const stations = new Map<string, Station>();
     const uicOf = (id: string): string | null => /-?(\d{7,8})$/.exec(id)?.[1] ?? null;
 
-    for (const s of stopRows!) {
-      const lat = parseFloat(s['stop_lat']!);
-      const lon = parseFloat(s['stop_lon']!);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-      const id = s['stop_id']!;
-      const uic = uicOf(id);
-      stops.set(id, { id, name: s['stop_name']!, lat, lon, uic });
-      if (!uic) continue;
-      let st = stations.get(uic);
-      if (!st) {
-        st = { uic, name: s['stop_name']!, lat, lon, stopIds: [] };
-        stations.set(uic, st);
-      }
-      st.stopIds.push(id);
-      // Prefer the StopArea's own name and coordinates as canonical.
-      if (id.startsWith('StopArea:')) {
-        st.name = s['stop_name']!;
-        st.lat = lat;
-        st.lon = lon;
-      }
-    }
-
-    const routes = new Map(routeRows!.map((r) => [r['route_id']!, r]));
+    forEachRow(
+      await read('stops.txt'),
+      ['stop_id', 'stop_name', 'stop_lat', 'stop_lon'],
+      (v) => {
+        const lat = parseFloat(v[2]!);
+        const lon = parseFloat(v[3]!);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        const id = v[0]!;
+        const name = v[1]!;
+        const uic = uicOf(id);
+        stops.set(id, { id, name, lat, lon, uic });
+        if (!uic) return;
+        let st = stations.get(uic);
+        if (!st) {
+          st = { uic, name, lat, lon, stopIds: [] };
+          stations.set(uic, st);
+        }
+        st.stopIds.push(id);
+        // Prefer the StopArea's own name and coordinates as canonical.
+        if (id.startsWith('StopArea:')) {
+          st.name = name;
+          st.lat = lat;
+          st.lon = lon;
+        }
+      },
+    );
 
     // Train number -> service marker and line name. A number is reused across
     // dates, so first match wins; the marker is stable.
     const trains = new Map<string, TrainMeta>();
     const idRe = /^OCE([A-Z]{2})(\d+)F/;
     const svcRe = /F:([A-Z]+):/;
-    for (const t of tripRows!) {
-      const tripId = t['trip_id']!;
+    forEachRow(await read('trips.txt'), ['trip_id', 'route_id'], (v) => {
+      const tripId = v[0]!;
       const m = idRe.exec(tripId);
       const sv = svcRe.exec(tripId);
-      if (!m || !sv) continue;
+      if (!m || !sv) return;
       const key = `${m[1]}${m[2]}`;
-      if (trains.has(key)) continue;
+      if (trains.has(key)) return;
       trains.set(key, {
         number: m[2]!,
         service: sv[1]!,
-        line: routes.get(t['route_id']!)?.['route_long_name'] ?? '',
+        line: routeName.get(v[1]!) ?? '',
       });
-    }
+    });
 
     // Free the extracted text files; the maps are what we keep.
     await Promise.all(WANTED.map((f) => rm(path.join(dataDir, f), { force: true })));
