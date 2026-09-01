@@ -257,9 +257,19 @@ func (t *Train) PositionAt(now int64, g *rail.Graph, cache *rail.Cache) Position
 	if leg.Basis == Between {
 		legF = leg.F
 	}
+	// Legs completed, over legs there are. The TypeScript divides the leg index
+	// alone, which leaves an arrived train reporting half its journey done on a
+	// three-stop run and none of it on a two-stop one. Nothing on the client
+	// reads this field, so correcting it costs nothing and stops the payload
+	// saying something untrue.
+	legs := math.Max(1, float64(len(t.Calls)-1))
+	done := float64(leg.I) + legF
+	if leg.Basis == Arrived {
+		done = legs
+	}
 	pos := Position{
 		Basis:       leg.Basis,
-		Progress:    (float64(leg.I) + legF) / math.Max(1, float64(len(t.Calls)-1)),
+		Progress:    done / legs,
 		Observation: obs,
 	}
 	switch leg.Basis {

@@ -109,11 +109,13 @@ func TestObservationGradesHowStaleTheEstimateIs(t *testing.T) {
 		now  int64
 		want Confidence
 	}{
+		// Ages are measured from the last stop actually passed, which after
+		// 1 260 s is the terminus.
 		{"nothing passed yet", -10, Scheduled},
 		{"just left A", 60, Confirmed},
-		{"ten minutes out", 600 + 10*60, Good},
-		{"half an hour out", 600 + 30*60, Estimated},
-		{"an hour out", 600 + 60*60, Stale},
+		{"ten minutes past the last stop", 1260 + 10*60, Good},
+		{"half an hour past it", 1260 + 30*60, Estimated},
+		{"an hour past it", 1260 + 60*60, Stale},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
