@@ -54,8 +54,8 @@ func TestSampleProfileOfConstantSpeedIsAStraightLine(t *testing.T) {
 
 func TestSampleProfileRejectsWhatItCannotDescribe(t *testing.T) {
 	tests := []struct {
-		name       string
-		cum, cumT  []float64
+		name      string
+		cum, cumT []float64
 	}{
 		{"empty", nil, nil},
 		{"one vertex", []float64{0}, []float64{0}},
