@@ -19,7 +19,7 @@ import (
 	rt "github.com/MobilityData/gtfs-realtime-bindings/golang/gtfs"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/nebuloss/traincon/internal/gtfs"
+	"traincon/internal/gtfs"
 )
 
 // DefaultURL is the public proxy for SNCF's trip updates.

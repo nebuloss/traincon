@@ -9,7 +9,7 @@ import (
 	rt "github.com/MobilityData/gtfs-realtime-bindings/golang/gtfs"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/nebuloss/traincon/internal/gtfs"
+	"traincon/internal/gtfs"
 )
 
 func TestSortCallsByTime(t *testing.T) {

@@ -3,7 +3,7 @@ package rail
 import (
 	"math"
 
-	"github.com/nebuloss/traincon/internal/geo"
+	"traincon/internal/geo"
 )
 
 const (

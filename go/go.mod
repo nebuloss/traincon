@@ -1,4 +1,4 @@
-module github.com/nebuloss/traincon
+module traincon
 
 go 1.24
 
