@@ -1,11 +1,11 @@
 /**
  * Where a train is along a leg at a given moment.
  *
- * Both sides run this. The server evaluates it once a minute when the feed
- * refreshes; the map evaluates it twelve times a second so the train moves.
- * Same function, same inputs, different rate — so the two cannot drift apart,
- * and the animation needs no correction because it is not an approximation of
- * the server's answer, it *is* the server's answer at a finer interval.
+ * The server samples the profile once per routed leg and sends it in the
+ * journey payload; this evaluates it twelve times a second so the train moves.
+ * The split is the point: the browser is reading the server's own answer at a
+ * finer interval, not approximating it, so the two cannot drift apart — and
+ * the sampling half lives in the Go server, in internal/motion.
  *
  * The input is the leg's motion profile: where the train has got to, as a
  * fraction of the distance, at each of a series of equally spaced moments. It
@@ -13,53 +13,6 @@
  * accelerating and braking, so it covers less ground at the start and end of a
  * leg than in the middle.
  */
-
-/**
- * Samples per leg.
- *
- * Uniform, and simply enough of them. The curve bends where the train changes
- * speed, and that is not only at the ends — a speed restriction puts a bend in
- * the middle — so clustering samples at the ends was tried and made the
- * restriction case worse than it fixed the approach case. Even spacing has no
- * such failure mode.
- *
- * Measured worst-case error against the exact curve, over uniform lines, short
- * legs, mid-leg restrictions and repeated limit changes: about 130 m on a
- * 500 km leg, and under 30 m on anything of ordinary length. That sits well
- * inside the uncertainty of the position itself, which comes from a feed that
- * only observes trains where they stop.
- */
-export const PROFILE_SAMPLES = 128;
-
-/**
- * Build the profile from a path's distance and time curves.
- *
- * Server-side, once per routed leg. `cum` and `cumT` are cumulative distance
- * and cumulative nominal time at each vertex.
- */
-export function sampleProfile(cum: readonly number[], cumT: readonly number[]): number[] {
-  const n = cum.length;
-  if (n < 2 || cumT.length !== n) return [];
-
-  const totalD = cum[n - 1]!;
-  const totalT = cumT[n - 1]!;
-  if (!(totalD > 0) || !(totalT > 0)) return [];
-
-  const out: number[] = new Array(PROFILE_SAMPLES + 1);
-  let j = 1;
-  for (let k = 0; k <= PROFILE_SAMPLES; k++) {
-    const t = (k / PROFILE_SAMPLES) * totalT;
-    while (j < n - 1 && cumT[j]! < t) j++;
-    const dt = cumT[j]! - cumT[j - 1]!;
-    const within = dt > 0 ? (t - cumT[j - 1]!) / dt : 0;
-    const d = cum[j - 1]! + (cum[j]! - cum[j - 1]!) * within;
-    out[k] = d / totalD;
-  }
-  // Pin the ends: rounding must not leave a train short of its own terminus.
-  out[0] = 0;
-  out[PROFILE_SAMPLES] = 1;
-  return out;
-}
 
 /**
  * Fraction of the leg's distance covered, at a fraction of its duration.

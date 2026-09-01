@@ -4,24 +4,19 @@
   "description": "Live tracking for French trains, built on SNCF open data",
   "main": "index.js",
   "scripts": {
-    "test": "node --max-old-space-size=3072 --test test/*.test.mjs",
-    "start": "node dist-server/server/index.js",
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test test/*.test.mjs",
     "onboard": "node tools/onboard.mjs",
     "fetch:geo": "bash scripts/fetch-geo.sh",
-    "logger": "node tools/logger.mjs",
-    "dev:replay": "SNCF_FEED_FILE=fixtures/sncf-trip-updates.pb node dist-server/server/index.js",
-    "sources": "node --max-old-space-size=3072 tools/compare-sources.mjs",
-    "dev": "vite",
-    "build": "tsc -p tsconfig.server.json && vite build",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit"
+    "server": "cd go && go run ./cmd/traincon",
+    "server:test": "cd go && gofmt -l . && go vet ./... && go test ./..."
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "type": "module",
-  "dependencies": {
-    "gtfs-realtime-bindings": "^2.2.0"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nebuloss/traincon.git"

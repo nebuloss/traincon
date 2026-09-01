@@ -31,16 +31,7 @@ APP_DIR="${APP_DIR:-/opt/traincon}"
 APP_PORT="${APP_PORT:-3000}"
 SERVICE_NAME="${SERVICE_NAME:-traincon}"
 SERVICE_USER="${SERVICE_USER:-traincon}"
-NODE_VERSION="${NODE_VERSION:-22}"
 GH_REPO="${GH_REPO:-nebuloss/traincon}"
-
-# Which server to run: the Go binary, or the Node bundle it was ported from.
-#
-# The Go one is a single static file — no runtime, no node_modules, no unzip —
-# and holds less than half the memory for the same feed. Node remains the
-# default until the Go server has run long enough in production to be the one
-# people are surprised not to get.
-RUNTIME="${TRAINCON_RUNTIME:-node}"
 GO_BINARY="traincon-linux-amd64"
 TARBALL="${TARBALL:-}"              # install this archive instead of a release
 VERSION="${VERSION:-}"              # install this tag instead of the newest
@@ -49,13 +40,10 @@ FETCH_GEO="${FETCH_GEO:-1}"         # 0 to skip the 19 MB rail geometry
 BOOT_TIMEOUT="${BOOT_TIMEOUT:-180}" # seconds to wait for the first response
 QUIET="${QUIET:-0}"                 # 1 to drop the progress dots
 
-# Oldest Node the server runs on; below this a newer one is installed.
-NODE_MINIMUM=20
-
 # Replaced wholesale on update. data/ is deliberately absent: it holds the
 # cached GTFS, the rail geometry and the last feed snapshot — 24 MB that would
 # otherwise be re-downloaded every time.
-APP_CONTENTS="dist dist-server scripts fixtures tools"
+APP_CONTENTS="dist scripts fixtures tools"
 
 LOG_FILE="/var/log/${SERVICE_NAME}.log"
 
@@ -166,14 +154,10 @@ service_install() {
   esac
 }
 
-# What the service actually executes. One definition, so the two service files
-# cannot drift apart on which server they start.
+# What the service executes. One definition, so the two service files cannot
+# drift apart on which server they start.
 server_exec() {
-  if [ "$RUNTIME" = go ]; then
-    printf '%s/traincon' "$APP_DIR"
-  else
-    printf '%s %s/dist-server/server/index.js' "$(command -v node)" "$APP_DIR"
-  fi
+  printf '%s/traincon' "$APP_DIR"
 }
 
 write_openrc_service() {
@@ -278,7 +262,8 @@ require_root() {
 # both test the result and pass it straight to pkg_install.
 missing_tools() {
   out=""
-  for tool in curl tar unzip; do
+  # No unzip: the server reads the GTFS archive itself, through archive/zip.
+  for tool in curl tar; do
     command -v "$tool" >/dev/null 2>&1 || out="$out $tool"
   done
   printf '%s' "$out"
@@ -300,50 +285,6 @@ ensure_tools() {
   fi
 }
 
-node_major() {
-  node -v 2>/dev/null | sed 's/v\([0-9]*\).*/\1/'
-}
-
-node_recent_enough() {
-  command -v node >/dev/null 2>&1 || return 1
-  [ "$(node_major)" -ge "$NODE_MINIMUM" ] 2>/dev/null
-}
-
-ensure_node() {
-  # The Go binary is static: no runtime to install, which is most of what this
-  # installer used to do on a bare machine.
-  if [ "$RUNTIME" = go ]; then
-    info "Go runtime: no Node needed"
-    return 0
-  fi
-  if node_recent_enough; then
-    info "Node already present: $(node -v)"
-    return 0
-  fi
-
-  info "Installing Node ${NODE_VERSION}"
-  case "$OS" in
-    alpine)
-      pkg_install nodejs npm
-      ;;
-    debian)
-      curl -fsSL "https://deb.nodesource.com/setup_${NODE_VERSION}.x" | bash - >/dev/null 2>&1 ||
-        warn "NodeSource setup failed, trying the distribution package"
-      pkg_install nodejs
-      ;;
-  esac
-
-  if ! command -v node >/dev/null 2>&1; then
-    die "Node installation failed"
-  fi
-  info "Node installed: $(node -v)"
-}
-
-# The release tag to install, on stdout.
-#
-# Not releases/latest/download/: that alias is CDN-cached, and for a few
-# minutes after a new tag it still serves the previous asset — which installs
-# an older build over a newer one and reports success.
 resolve_release_tag() {
   if [ -n "$VERSION" ]; then
     printf '%s' "$VERSION"
@@ -378,12 +319,10 @@ unpack_release() {
   tar -xzf "$dest/app.tar.gz" -C "$dest"
   rm -f "$dest/app.tar.gz"
 
-  # The client bundle is the same either way; only the server differs.
-  if [ "$RUNTIME" = go ]; then
-    url="https://github.com/${GH_REPO}/releases/download/${tag}/${GO_BINARY}"
-    curl -fsSL "$url" -o "$dest/traincon" || die "download failed: $url"
-    chmod +x "$dest/traincon"
-  fi
+  # The server: one static file, no runtime and no dependencies behind it.
+  url="https://github.com/${GH_REPO}/releases/download/${tag}/${GO_BINARY}"
+  curl -fsSL "$url" -o "$dest/traincon" || die "download failed: $url"
+  chmod +x "$dest/traincon"
 }
 
 install_app() {
@@ -399,19 +338,6 @@ install_app() {
   done
   cp -r "$tmp"/. "$APP_DIR"/
   rm -rf "$tmp"
-}
-
-install_dependencies() {
-  # The Go binary carries its own: nothing to install, and no npm on the box.
-  if [ "$RUNTIME" = go ]; then
-    info "Go runtime: no dependencies to install"
-    return
-  fi
-  info "Installing dependencies"
-  cd "$APP_DIR"
-  npm ci --omit=dev --no-audit --no-fund >/dev/null 2>&1 ||
-    npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1 ||
-    die "npm install failed"
 }
 
 ensure_user() {
@@ -449,26 +375,24 @@ memory_limit_mb() {
   fi
 }
 
-# How much heap V8 may use, in MB, on stdout.
+# How much memory the Go runtime may use, in MB, on stdout.
 #
-# --max-old-space-size is a ceiling, and V8 treats it as licence to defer
-# collection: given 2 GB on a 512 MB container the process settled at 392 MB
-# RSS and was one traffic spike from the OOM killer.
-heap_limit() {
+# GOMEMLIMIT is a soft limit: the collector works harder as it is approached
+# rather than the process dying at it, which is the difference that matters
+# here. Its predecessor on this service was V8's --max-old-space-size, a hard
+# ceiling the process hit and aborted against on five separate days.
+#
+# Soft, so it can be set close to the container: 80% leaves room for the
+# runtime's own stacks and the socket buffers, and the collector spends the
+# rest rather than the OOM killer choosing for it.
+memory_ceiling() {
   mb="$(memory_limit_mb)"
   case "$mb" in
     ''|*[!0-9]*) echo 512; return 0 ;;
   esac
-
-  # Leave room for everything outside the old space. Not the rail graph: that
-  # is plain JS arrays and lives *in* the heap. It is Node's own runtime, the
-  # protobuf decode, socket buffers, and the memory the allocator keeps after
-  # parsing two 9.5 MB geometry files at boot — measured at ~210 MB of RSS
-  # above a 90 MB heap, which is why 55% rather than something higher.
-  heap=$((mb * 55 / 100))
-  [ "$heap" -lt 192 ]  && heap=192
-  [ "$heap" -gt 1024 ] && heap=1024
-  echo "$heap"
+  limit=$((mb * 80 / 100))
+  [ "$limit" -lt 128 ] && limit=128
+  echo "$limit"
 }
 
 # The key already stored by a previous install, if any.
@@ -482,8 +406,8 @@ stored_api_key() {
 }
 
 write_env() {
-  heap="$(heap_limit)"
-  info "Heap ceiling: ${heap} MB"
+  ceiling="$(memory_ceiling)"
+  info "Memory ceiling: ${ceiling} MB (soft)"
 
   if [ -z "$SNCF_API_KEY" ]; then
     SNCF_API_KEY="$(stored_api_key)"
@@ -497,7 +421,8 @@ write_env() {
   umask 077
   {
     printf 'PORT=%s\n' "$APP_PORT"
-    printf 'NODE_OPTIONS=--max-old-space-size=%s\n' "$heap"
+    printf 'TRAINCON_ROOT=%s\n' "$APP_DIR"
+    printf 'GOMEMLIMIT=%sMiB\n' "$ceiling"
     if [ -n "$SNCF_API_KEY" ]; then
       printf 'SNCF_API_KEY=%s\n' "$SNCF_API_KEY"
     fi
@@ -619,10 +544,8 @@ print_summary() {
 main() {
   require_root
   ensure_tools
-  ensure_node
 
   install_app
-  install_dependencies
 
   ensure_user
   write_env

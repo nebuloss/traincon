@@ -4,6 +4,8 @@ import (
 	"container/list"
 	"fmt"
 	"math"
+	"os"
+	"strconv"
 
 	"traincon/internal/geo"
 )
@@ -113,7 +115,17 @@ func speedAndTime(cum, segV []float64) (kmh, cumT []float64) {
 // could mean 5 MB or 150 MB depending on which trains happened to run. At the
 // measured 573 vertices per path, the old cap of 2 500 paths was ~1.4 million
 // vertices, and that is what exhausted the heap on the TypeScript server.
-const pathCacheMaxPoints = 400_000
+var pathCacheMaxPoints = envInt("RAIL_PATH_POINTS", 400_000)
+
+// envInt reads an operational knob, falling back where it is unset or unusable.
+// A container smaller than this one was sized for is the reason it is a knob at
+// all: the cache is the largest thing that grows after boot.
+func envInt(name string, fallback int) int {
+	if v, err := strconv.Atoi(os.Getenv(name)); err == nil && v > 0 {
+		return v
+	}
+	return fallback
+}
 
 // pathCacheMaxEntries is a secondary guard, for a run of unusually short paths.
 const pathCacheMaxEntries = 4000

@@ -88,37 +88,52 @@ port 3000. Re-run the same command to update — `data/` is preserved so the
 | `SNCF_API_KEY` | — | optional, enables disruption reasons |
 | `FETCH_GEO` | `1` | `0` skips the 19 MB rail geometry |
 | `VERSION` | newest | install a specific tag, e.g. `v2.1.0` |
-| `RAIL_PATH_POINTS` | `400000` | vertex budget for the routed-path cache (~32 MB) |
+| `RAIL_PATH_POINTS` | `400000` | vertex budget for the routed-path cache (~12 MB) |
+| `GOMEMLIMIT` | 80% of the container | soft ceiling; the collector works harder rather than the process dying |
 | `PUBLIC_URL` | — | pins the origin in the link-preview tags; derived from the request otherwise |
 
 ## Development
 
-TypeScript throughout, classes on both sides. Vite bundles the interface; the
-server compiles to `dist-server/`.
+A Go server and a TypeScript client. The server is one static binary with two
+dependencies; the client is bundled by Vite.
 
 ```bash
 npm install
 npm run fetch:geo     # rail network geometry, ~19 MB, once
-npm run build         # tsc (server) + vite (client)
-npm start             # http://localhost:3000
+npm run build         # vite, into dist/
+npm run server        # go run ./cmd/traincon — http://localhost:3000
 npm run dev           # Vite dev server, proxying /api to :3000
-npm run typecheck
-npm test
+npm run typecheck     # the client
+npm test              # the client
+npm run server:test   # gofmt, go vet, go test
 ```
 
 ```
-src/shared/types.ts   the API contract, shared by both halves
-src/server/           GtfsStatic · FeedClient · RailGraph · Train
-                      CouplingDetector · TrainStore · ApiServer
+go/cmd/traincon/      the binary
+go/internal/gtfs/     the static schedule
+go/internal/feed/     GTFS-RT trip updates
+go/internal/rail/     the routing graph, and paths over it
+go/internal/train/    legs, delays, position
+go/internal/store/    the live picture, and everything served from it
+go/internal/api/      the JSON API and the bundle
+src/shared/types.ts   the API contract the client reads
 src/client/core/      I18n · Api · Cache · Format · Bookmarks · Theme
 src/client/components Timeline · TrainCard · MapView · TrainModal · Banner
 src/client/views/     WatchView · SearchView
-tools/                standalone diagnostics (onboard GPS, feed logger)
+tools/                standalone diagnostics (onboard GPS)
 ```
 
-Every DTO the API emits is declared once in `src/shared/types.ts`, so a rename
-that diverges between server and client fails to compile rather than surfacing
-as `undefined` in the interface.
+The contract between the two is JSON, not code. `src/shared/types.ts` declares
+what the client expects and `go/internal/store` produces it, so the two can no
+longer be kept in agreement by the compiler — `go/internal/store/contract_test.go`
+does it instead, pinning every field name and every value that must be null
+rather than empty. It exists because comparing the two servers field by field,
+during the port, found six breaks that nothing else would have caught.
+
+The behaviour that genuinely spans the boundary is under forty lines: the speed
+ceiling a train is held to, and the deep-link parser. The motion model does not
+— the server samples each leg's profile and sends it, the client only reads it,
+so there is one curve rather than two implementations of one.
 
 The upstream feed goes down regularly, so development does not depend on it:
 

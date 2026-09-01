@@ -74,37 +74,6 @@ test('a coupled set is removed as one', () => {
   assert.equal(b.count, 0);
 });
 
-// ── how the server describes a miss ───────────────────────────────────────────
-
-const { ApiServer } = await import(path.join(ROOT, 'dist-server/server/Server.js'));
-
-test('the server names the two kinds of miss', async () => {
-  const store = {
-    find: () => [],
-    // 8540 is in the timetable but not running; 9999 is nowhere.
-    knownSchedule: (n) =>
-      n === '8540' ? { number: '8540', service: 'OUI', line: 'Hendaye - Paris' } : null,
-  };
-  const server = new ApiServer(store, path.join(ROOT, 'dist'));
-  await server.listen(0);
-  try {
-    const base = `http://127.0.0.1:${server.port}`;
-
-    const dormant = await (await fetch(`${base}/api/train/8540`)).json();
-    assert.equal(dormant.found, false);
-    assert.equal(dormant.reason, 'dormant');
-    assert.ok(dormant.knownSchedule, 'a dormant train still has a timetable entry');
-
-    const unknown = await (await fetch(`${base}/api/train/9999`)).json();
-    assert.equal(unknown.found, false);
-    assert.equal(unknown.reason, 'unknown');
-    assert.equal(unknown.knownSchedule, null);
-  } finally {
-    await server.close();
-  }
-});
-
-
 // ── telling the two kinds of miss apart ──────────────────────────────────────
 
 const { missingKind } = await import(path.join(ROOT, 'src/shared/missing.ts'));
