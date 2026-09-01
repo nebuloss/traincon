@@ -43,7 +43,7 @@ QUIET="${QUIET:-0}"                 # 1 to drop the progress dots
 # Replaced wholesale on update. data/ is deliberately absent: it holds the
 # cached GTFS, the rail geometry and the last feed snapshot — 24 MB that would
 # otherwise be re-downloaded every time.
-APP_CONTENTS="dist scripts fixtures tools"
+APP_CONTENTS="dist scripts"
 
 LOG_FILE="/var/log/${SERVICE_NAME}.log"
 

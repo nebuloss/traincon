@@ -41,7 +41,10 @@ jobs:
           go build -trimpath -ldflags='-s -w' -o ../traincon-linux-amd64 ./cmd/traincon
 
       - name: Package
-        run: tar -czf traincon.tar.gz dist/ scripts/ fixtures/ tools/ package.json package-lock.json
+        # The client bundle and the one script the installer runs. No
+        # package.json, no node_modules, no diagnostics that would need a
+        # runtime the server no longer has.
+        run: tar -czf traincon.tar.gz dist/ scripts/fetch-geo.sh
 
       - name: Create release
         uses: softprops/action-gh-release@v2
