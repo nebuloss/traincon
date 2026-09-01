@@ -13,8 +13,8 @@ import (
 
 // TrainDTO is a train as the API serves it.
 type TrainDTO struct {
-	ID           string      `json:"id"`
-	Number       string      `json:"number"`
+	ID     string `json:"id"`
+	Number string `json:"number"`
 	// Service is the marker the static schedule carries, or null where it
 	// knows none — which the client distinguishes from an empty label.
 	Service      *string     `json:"service"`
