@@ -25,17 +25,17 @@ type TrainDTO struct {
 	Cancelled    bool        `json:"cancelled"`
 	// Delay is the reconciled figure; OwnDelay is this number's own, before a
 	// coupled twin's fresher record was applied.
-	Delay       int64                   `json:"delay"`
-	OwnDelay    int64                   `json:"ownDelay"`
-	WorstDelay  int64                   `json:"worstDelay"`
-	Position    train.Position          `json:"position"`
-	Next        *NextCall               `json:"next"`
-	Trend       Trend                   `json:"trend"`
-	History     []DelaySample           `json:"history"`
-	CoupledWith []string                `json:"coupledWith"`
+	Delay       int64                    `json:"delay"`
+	OwnDelay    int64                    `json:"ownDelay"`
+	WorstDelay  int64                    `json:"worstDelay"`
+	Position    train.Position           `json:"position"`
+	Next        *NextCall                `json:"next"`
+	Trend       Trend                    `json:"trend"`
+	History     []DelaySample            `json:"history"`
+	CoupledWith []string                 `json:"coupledWith"`
 	Reconciled  *coupling.Reconciliation `json:"reconciled"`
-	Traffic     *headway.Traffic        `json:"traffic"`
-	FeedTS      int64                   `json:"feedTs"`
+	Traffic     *headway.Traffic         `json:"traffic"`
+	FeedTS      int64                    `json:"feedTs"`
 }
 
 // NextCall is the next stop a train has yet to make.
@@ -51,26 +51,26 @@ type NextCall struct {
 // every call array and every delay sample assembled, then dropped on the way
 // out. These fields are all it ever wanted.
 type LightDTO struct {
-	Number      string              `json:"number"`
-	Service     string              `json:"service"`
-	Family      gtfs.Family         `json:"family"`
-	Origin      string              `json:"origin"`
-	Destination string              `json:"destination"`
-	Delay       int64               `json:"delay"`
-	Cancelled   bool                `json:"cancelled"`
-	Trend       Trend               `json:"trend"`
-	CoupledWith []string            `json:"coupledWith"`
-	Lat         float64             `json:"lat"`
-	Lon         float64             `json:"lon"`
-	Bearing     float64             `json:"bearing"`
-	Basis       train.Basis         `json:"basis"`
-	SpeedKmh    float64             `json:"speedKmh"`
-	Geometry    string              `json:"geometry"`
-	Quality     train.Quality       `json:"quality"`
-	Observation train.Observation   `json:"observation"`
-	LegKm       *float64            `json:"legKm,omitempty"`
-	FromStop    string              `json:"fromStop,omitempty"`
-	Next        *NextCall           `json:"next"`
+	Number      string            `json:"number"`
+	Service     string            `json:"service"`
+	Family      gtfs.Family       `json:"family"`
+	Origin      string            `json:"origin"`
+	Destination string            `json:"destination"`
+	Delay       int64             `json:"delay"`
+	Cancelled   bool              `json:"cancelled"`
+	Trend       Trend             `json:"trend"`
+	CoupledWith []string          `json:"coupledWith"`
+	Lat         float64           `json:"lat"`
+	Lon         float64           `json:"lon"`
+	Bearing     float64           `json:"bearing"`
+	Basis       train.Basis       `json:"basis"`
+	SpeedKmh    float64           `json:"speedKmh"`
+	Geometry    string            `json:"geometry"`
+	Quality     train.Quality     `json:"quality"`
+	Observation train.Observation `json:"observation"`
+	LegKm       *float64          `json:"legKm,omitempty"`
+	FromStop    string            `json:"fromStop,omitempty"`
+	Next        *NextCall         `json:"next"`
 }
 
 // Filter narrows a listing.

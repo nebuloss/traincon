@@ -213,10 +213,10 @@ func (s *Store) JourneyGeo(dto TrainDTO) Journey {
 			"coordinates": smoothRoute(coords),
 		},
 		Properties: map[string]any{
-			"number":            dto.Number,
-			"legsWithGeometry":  covered,
-			"legs":              total,
-			"legProfiles":       profiles,
+			"number":           dto.Number,
+			"legsWithGeometry": covered,
+			"legs":             total,
+			"legProfiles":      profiles,
 		},
 	})
 	for i, c := range dto.Calls {
