@@ -207,14 +207,6 @@ export interface SuggestionDTO {
   score: number;
 }
 
-export interface StationDTO {
-  uic: string;
-  name: string;
-  lat: number;
-  lon: number;
-  live: boolean;
-}
-
 /** Feed health, and which of the fallback layers is in play. */
 export interface StatsDTO {
   total: number;

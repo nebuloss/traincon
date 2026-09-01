@@ -29,6 +29,7 @@ import type {
   StatsDTO,
   SuggestionDTO,
   TrainDTO,
+  TrainLightDTO,
   Trend,
   WorstBoardDTO,
 } from '../shared/types.ts';
@@ -120,6 +121,17 @@ function smoothRoute(coords: [number, number][]): [number, number][] {
     out = next;
   }
   return out;
+}
+
+/** A train's cheap fields, worked out once and shared by both list builders. */
+interface TrainView {
+  /** The train as it came from the feed: ownDelay is measured on this one. */
+  train: Train;
+  meta: ReturnType<typeof serviceMeta>;
+  rec: TrainDTO['reconciled'];
+  /** The same train with a coupled partner's fresher calls, where there is one. */
+  view: Train;
+  delay: number;
 }
 
 export class TrainStore {
@@ -357,13 +369,68 @@ export class TrainStore {
     return 'stable';
   }
 
-  /** Turn a Train into the shape the API serves. */
-  toDTO(train: Train, now = Math.floor(Date.now() / 1000)): TrainDTO {
-    const meta = serviceMeta(train.service);
+  /**
+   * Everything about a train that costs nothing to work out.
+   *
+   * Deliberately stops short of the position, which is the expensive part: it
+   * routes the leg over the rail graph. A filtered list can decide what to
+   * drop from these fields alone, and pay for the positions of only what
+   * survives.
+   */
+  private viewOf(train: Train, now: number): TrainView {
     const rec = this.couples.delays.get(train.number) ?? null;
-    const own = train.currentDelay(now);
     const corrected = this.couples.calls.get(train.number);
     const view = corrected ? train.withCalls(corrected) : train;
+    return {
+      train,
+      meta: serviceMeta(train.service),
+      rec,
+      view,
+      delay,
+    };
+  }
+
+  /**
+   * Trains matching everything in the filter that can be judged without a
+   * position, so the ones that fail are never routed.
+   *
+   * `running` is not among them: it reads position.basis, so it has to wait
+   * until the position exists. Everything else — family, delay, the text
+   * search — is answerable from the train itself.
+   */
+  private selected(filter: ListFilter, now: number): TrainView[] {
+    const { family, minDelay = 0, q = '' } = filter;
+    const s = q.toLowerCase();
+    const out: TrainView[] = [];
+    for (const train of this.trains) {
+      const v = this.viewOf(train, now);
+      if (family && family !== 'all' && v.meta.family !== family) continue;
+      if (minDelay && v.delay < minDelay) continue;
+      if (
+        s &&
+        !(
+          v.view.number.includes(s) ||
+          v.view.origin.toLowerCase().includes(s) ||
+          v.view.destination.toLowerCase().includes(s) ||
+          v.view.calls.some((c) => c.name.toLowerCase().includes(s))
+        )
+      )
+        continue;
+      out.push(v);
+    }
+    return out;
+  }
+
+  /**
+   * Turn a Train into the shape the API serves.
+   *
+   * `pre` is the same train's cheap fields when the caller has already worked
+   * them out; ownDelay still comes from the uncorrected train, which is the
+   * whole point of keeping both.
+   */
+  toDTO(train: Train, now = Math.floor(Date.now() / 1000), pre?: TrainView): TrainDTO {
+    const own = train.currentDelay(now);
+    const { meta, rec, view, delay } = pre ?? this.viewOf(train, now);
 
     return {
       id: view.id,
@@ -392,20 +459,50 @@ export class TrainStore {
 
   list(filter: ListFilter = {}): TrainDTO[] {
     const now = Math.floor(Date.now() / 1000);
-    let out = this.trains.map((t) => this.toDTO(t, now));
-    const { family, minDelay = 0, running = false, q = '' } = filter;
-    if (family && family !== 'all') out = out.filter((t) => t.family === family);
-    if (minDelay) out = out.filter((t) => t.delay >= minDelay);
-    if (running) out = out.filter((t) => ['between', 'at_station'].includes(t.position.basis));
-    if (q) {
-      const s = q.toLowerCase();
-      out = out.filter(
-        (t) =>
-          t.number.includes(s) ||
-          t.origin.toLowerCase().includes(s) ||
-          t.destination.toLowerCase().includes(s) ||
-          t.calls.some((c) => c.name.toLowerCase().includes(s)),
-      );
+    const out = this.selected(filter, now).map((v) => this.toDTO(v.train, now, v));
+    return filter.running
+      ? out.filter((t) => t.position.basis === 'between' || t.position.basis === 'at_station')
+      : out;
+  }
+
+  /**
+   * The same list, in the shape the map asks for.
+   *
+   * This used to be a projection applied *after* building a full DTO per
+   * train: every call array and every delay sample assembled, then dropped on
+   * the way out. These fields are all it ever wanted — 686 kB rather than
+   * 2.9 MB — and because the filters now run before anything is routed,
+   * asking for one family no longer pays to position the other three.
+   */
+  lightList(filter: ListFilter = {}): TrainLightDTO[] {
+    const now = Math.floor(Date.now() / 1000);
+    const out: TrainLightDTO[] = [];
+    for (const { meta, view, delay } of this.selected(filter, now)) {
+      const position = this.couples.positions.get(view.number) ?? view.positionAt(now, this.rail);
+      if (filter.running && position.basis !== 'between' && position.basis !== 'at_station') continue;
+      const next = view.nextCall(now);
+      out.push({
+        number: view.number,
+        service: meta.label,
+        family: meta.family,
+        origin: view.origin,
+        destination: view.destination,
+        delay,
+        cancelled: view.cancelled,
+        trend: this.trend(view.number),
+        coupledWith: this.couples.partners.get(view.number) ?? [],
+        lat: position.lat,
+        lon: position.lon,
+        bearing: position.bearing,
+        basis: position.basis,
+        speedKmh: position.speedKmh,
+        geometry: position.geometry,
+        quality: position.quality,
+        observation: position.observation,
+        legKm: position.legKm,
+        fromStop: position.fromStop,
+        next: next ? { name: next.name, time: next.time, delay: next.delay } : null,
+      });
     }
     return out;
   }
@@ -420,24 +517,6 @@ export class TrainStore {
       if (meta.number === number) return meta;
     }
     return null;
-  }
-
-  /** Stop ids served by any train currently in the feed. */
-  private servedStopIds(): Set<string> {
-    const served = new Set<string>();
-    for (const t of this.trains) for (const c of t.calls) served.add(c.stopId);
-    return served;
-  }
-
-  searchStations(q: string, limit = 12) {
-    const served = this.servedStopIds();
-    return this.statics.searchStations(q, served, limit).map((s) => ({
-      uic: s.uic,
-      name: s.name,
-      lat: s.lat,
-      lon: s.lon,
-      live: s.stopIds.some((i) => served.has(i)),
-    }));
   }
 
   /**

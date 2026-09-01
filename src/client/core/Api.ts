@@ -10,7 +10,6 @@ import { Cache } from './Cache.ts';
 import { tr } from './I18n.ts';
 import type {
   JourneyGeo,
-  StationDTO,
   StatsDTO,
   SuggestionDTO,
   TrainDTO,
@@ -80,10 +79,6 @@ export class Api {
 
   worst(limit = 25): Promise<WorstBoardDTO> {
     return this.get<WorstBoardDTO>(`/api/worst?limit=${limit}`);
-  }
-
-  stations(q: string, limit = 12): Promise<StationDTO[]> {
-    return this.get<StationDTO[]>(`/api/stations?q=${encodeURIComponent(q)}&limit=${limit}`);
   }
 
   trainsLight(family?: string, running = false): Promise<{ feedTs: number; trains: TrainLightDTO[] }> {

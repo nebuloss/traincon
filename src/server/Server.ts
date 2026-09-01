@@ -161,41 +161,18 @@ export class ApiServer {
     });
 
     this.routes.set('/api/trains', (_req, res, url) => {
-      const list = this.store.list({
+      const filter = {
         family: this.family(url),
         minDelay: Number(url.searchParams.get('minDelay') ?? 0),
         running: url.searchParams.get('running') === '1',
         q: url.searchParams.get('q') ?? '',
-      });
-      // The map only needs a light payload.
+      };
+      // The map only needs a light payload — so build that, rather than
+      // assembling every train's calls and history and dropping them here.
       if (url.searchParams.get('light') === '1') {
-        return this.json(res, {
-          feedTs: this.store.feedTs,
-          trains: list.map((t) => ({
-            number: t.number,
-            service: t.serviceLabel,
-            family: t.family,
-            origin: t.origin,
-            destination: t.destination,
-            delay: t.delay,
-            cancelled: t.cancelled,
-            trend: t.trend,
-            coupledWith: t.coupledWith,
-            lat: t.position.lat,
-            lon: t.position.lon,
-            bearing: t.position.bearing,
-            basis: t.position.basis,
-            speedKmh: t.position.speedKmh,
-            geometry: t.position.geometry,
-            quality: t.position.quality,
-            observation: t.position.observation,
-            legKm: t.position.legKm,
-            fromStop: t.position.fromStop,
-            next: t.next ? { name: t.next.name, time: t.next.time, delay: t.next.delay } : null,
-          })),
-        });
+        return this.json(res, { feedTs: this.store.feedTs, trains: this.store.lightList(filter) });
       }
-      this.json(res, { feedTs: this.store.feedTs, trains: list });
+      this.json(res, { feedTs: this.store.feedTs, trains: this.store.list(filter) });
     });
 
     this.routes.set('/api/worst', (_req, res, url) => {
@@ -213,15 +190,7 @@ export class ApiServer {
       );
     });
 
-    this.routes.set('/api/stations', (_req, res, url) => {
-      this.json(
-        res,
-        this.store.searchStations(
-          url.searchParams.get('q') ?? '',
-          Number(url.searchParams.get('limit') ?? 12),
-        ),
-      );
-    });
+  });
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -270,13 +239,6 @@ export class ApiServer {
           );
         }
         return this.json(res, { found: true, feedTs: this.store.feedTs, trains: hits });
-      }
-
-      m = /^\/api\/board\/(.+)$/.exec(p);
-      if (m) {
-        const station = this.store.stations.findStation(decodeURIComponent(m[1]!));
-        if (!station) return this.json(res, { error: 'unknown station' }, 404);
-        return this.json(res, { stop: station, feedTs: this.store.feedTs });
       }
 
       if (p.startsWith('/api/')) return this.json(res, { error: 'not found' }, 404);

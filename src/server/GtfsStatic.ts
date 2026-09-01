@@ -238,26 +238,4 @@ export class GtfsStatic {
     await Promise.all(WANTED.map((f) => rm(path.join(dataDir, f), { force: true })));
     return new GtfsStatic(stops, stations, trains, Date.now());
   }
-
-  findStation(uic: string): Station | undefined {
-    return this.stations.get(uic);
-  }
-
-  /** Search stations by name; `servedIds` promotes those currently served. */
-  searchStations(query: string, servedIds: ReadonlySet<string>, limit = 12): Station[] {
-    const q = query.trim().toLowerCase();
-    if (q.length < 2) return [];
-    const out: Station[] = [];
-    for (const st of this.stations.values()) {
-      if (st.name.toLowerCase().includes(q)) out.push(st);
-    }
-    const isLive = (s: Station): number => (s.stopIds.some((i) => servedIds.has(i)) ? 1 : 0);
-    out.sort(
-      (a, b) =>
-        isLive(b) - isLive(a) ||
-        a.name.toLowerCase().indexOf(q) - b.name.toLowerCase().indexOf(q) ||
-        a.name.length - b.name.length,
-    );
-    return out.slice(0, limit);
-  }
 }
