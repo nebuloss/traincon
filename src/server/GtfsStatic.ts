@@ -84,7 +84,11 @@ export interface TrainMeta {
  * an empty string rather than throwing, so a schema change degrades the way a
  * missing value would.
  */
-function forEachRow(text: string, wanted: string[], cb: (v: readonly string[]) => void): void {
+export function forEachRow(
+  text: string,
+  wanted: string[],
+  cb: (v: readonly string[]) => void,
+): void {
   let header: string[] | null = null;
   let at: number[] = [];
   let width = 0;
