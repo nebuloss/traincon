@@ -1,14 +1,24 @@
 # traincon — Go backend
 
-A port of `src/server/`. Every package is ported and the binary serves the
-whole API. The TypeScript server is still the one in production; this runs
-alongside it until it has been watched for long enough to swap.
+A port of `src/server/`. Every package is ported, the binary serves the whole
+API, and it is running on the production container beside the Node service —
+`traincon-go` on port 3001, supervised on the same terms, with its own data
+directory so it cannot touch the live one's state. The Node service is still
+what the public sees.
 
 ## Why
 
 Measured on the running server, not assumed:
 
-Both servers on the same captured feed, 1 075 trains:
+On the production container, both on the live feed:
+
+| | Node | Go |
+|---|---|---|
+| heap | 124 MB | **40 MB** |
+| resident | 211 MB | **101 MB** |
+| boot | seconds | **1.5 s** |
+
+And on the same captured feed, 1 075 trains:
 
 | | TypeScript | Go |
 |---|---|---|
@@ -74,16 +84,28 @@ compared, because "it looks right" is not a check:
 - **feed decode** — 1 075 trains from the same capture the TypeScript harness
   replays, which exercises the id pattern, the stop lookup, the two-call
   minimum and the join against the schedule.
-- **the whole API** — both servers run on the same capture and every train is
-  compared field by field. **992 of 1 040 identical**; the remaining 48 differ
-  only in values that move with the clock, which the three-second skew between
-  the two responses accounts for (`ageSec` 6 480 against 6 477).
+- **the whole API, on a capture** — both servers on the same fixture, every
+  train compared field by field. **992 of 1 040 identical**; the other 48 move
+  with the clock, which the three-second skew between the responses accounts
+  for.
+- **the whole API, live** — both on the production container, waiting until
+  they hold the same feed snapshot before comparing. **1 133 of 1 332
+  identical.** What is left is accounted for: `traffic`, `speedKmh` and the
+  positions come from each process refreshing at its own instant, and
+  `reconciled.source` differs because picking the freshest member of a coupled
+  set needs revision history the newer process has not accumulated yet.
 
-That last comparison found four contract breaks that unit tests would not
-have: calls serialised with Go field names rather than the client's, `next`
-reduced to three fields where the full DTO carries the whole call, `avgKmh`
-emitted on straight-line geometry where it has nothing to average, and an
-unknown service marker sent as `""` rather than `null`.
+Those comparisons found six contract breaks no unit test would have: calls
+serialised with Go field names rather than the client's; `next` reduced to
+three fields where the full DTO carries the whole call; `avgKmh` emitted on
+straight-line geometry, which has nothing to average; an unknown service marker
+sent as `""` rather than `null`; `lastStop` likewise, on 520 trains at once;
+and — found only by fetching for real — `Accept-Encoding: gzip` set by hand,
+which turns off net/http's transparent decompression and fed gzip straight to
+the protobuf decoder.
+
+`internal/store/contract_test.go` pins each of them, so the next one fails
+`go test` rather than waiting for a side-by-side run.
 
 ## Dependencies
 
@@ -112,16 +134,22 @@ recorded where they live:
 
 Everything else is faithful, and pinned by the equivalence tests above.
 
+## Deploying it
+
+`install.sh` installs either server; `TRAINCON_RUNTIME=go` picks this one, and
+then there is no Node, no `node_modules` and no `unzip` to install — the
+release carries a single static binary. The release workflow builds it with
+`CGO_ENABLED=0` and attaches `traincon-linux-amd64`; CI runs `gofmt`, `go vet`
+and `go test` on every push.
+
 ## Not yet done
 
-- `/api/rail.geojson` answers 404. The client tolerates it by drawing no
-  background rail layer, but the thinned network still has to be built and
-  gzipped at boot.
-- `internal/store` has no unit tests of its own. It is covered by the
-  field-by-field comparison against the TypeScript server, which is the
-  stronger check but is run by hand rather than by `go test`.
-- Nothing is deployed. The service definition in `install.sh` still starts the
-  Node server.
+- **The cutover.** Production still runs the Node service. Switching it means
+  re-running the installer with `TRAINCON_RUNTIME=go`, and it should follow a
+  soak long enough to cover a full day — including the twelve-hourly static
+  refresh, which is what killed the Node process on five separate days.
+- The store has no test that boots it against real data; the contract tests
+  cover the wire format, and the side-by-side covers the rest.
 
 The client stays TypeScript and needs no changes: the contract between them is
 JSON, and the only behaviour shared across the boundary is `plausibleSpeed` and
