@@ -1,7 +1,6 @@
 package rail
 
 import (
-	"container/heap"
 	"math"
 
 	"github.com/nebuloss/traincon/internal/geo"
@@ -303,9 +302,9 @@ func (g *Graph) Route(from, to int32, maxHours float64, allowFast bool) []int32 
 	done := make([]bool, n)
 
 	dist[from] = 0
-	pq := &nodeQueue{{node: from, hours: 0}}
-	for pq.Len() > 0 {
-		top := heap.Pop(pq).(queued)
+	pq := nodeQueue{{node: from, hours: 0}}
+	for len(pq) > 0 {
+		top := pq.pop()
 		if done[top.node] {
 			continue
 		}
@@ -328,7 +327,7 @@ func (g *Graph) Route(from, to int32, maxHours float64, allowFast bool) []int32 
 			}
 			dist[next] = cost
 			prev[next] = top.node
-			heap.Push(pq, queued{node: next, hours: cost})
+			pq.push(queued{node: next, hours: cost})
 		}
 	}
 
@@ -357,19 +356,51 @@ type queued struct {
 	hours float64
 }
 
-// nodeQueue is a min-heap on travel time. Entries are never updated in place:
-// a cheaper route to a node pushes a second entry and the stale one is skipped
-// when it surfaces, which is cheaper than maintaining positions.
+// nodeQueue is a min-heap on travel time.
+//
+// Written out rather than driven through container/heap, whose Push and Pop
+// take and return `any`: every entry would be boxed on the way in, and a route
+// across France pushes a quarter of a million of them. Entries are never
+// updated in place either — a cheaper route to a node pushes a second entry and
+// the stale one is skipped when it surfaces, which costs less than tracking
+// each node's position in the heap.
 type nodeQueue []queued
 
-func (q nodeQueue) Len() int           { return len(q) }
-func (q nodeQueue) Less(i, j int) bool { return q[i].hours < q[j].hours }
-func (q nodeQueue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
-func (q *nodeQueue) Push(x any)        { *q = append(*q, x.(queued)) }
-func (q *nodeQueue) Pop() any {
-	old := *q
-	n := len(old)
-	item := old[n-1]
-	*q = old[:n-1]
-	return item
+func (q *nodeQueue) push(v queued) {
+	*q = append(*q, v)
+	s := *q
+	for i := len(s) - 1; i > 0; {
+		parent := (i - 1) / 2
+		if s[parent].hours <= s[i].hours {
+			break
+		}
+		s[parent], s[i] = s[i], s[parent]
+		i = parent
+	}
+}
+
+func (q *nodeQueue) pop() queued {
+	s := *q
+	top := s[0]
+	last := len(s) - 1
+	s[0] = s[last]
+	s = s[:last]
+	*q = s
+
+	for i := 0; ; {
+		left, right := 2*i+1, 2*i+2
+		small := i
+		if left < len(s) && s[left].hours < s[small].hours {
+			small = left
+		}
+		if right < len(s) && s[right].hours < s[small].hours {
+			small = right
+		}
+		if small == i {
+			break
+		}
+		s[i], s[small] = s[small], s[i]
+		i = small
+	}
+	return top
 }
