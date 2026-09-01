@@ -103,6 +103,34 @@ process.env['SNCF_FEED_SHIFT'] = 'none';
 // Keep the harness away from the real data directory's snapshot file.
 const scratch = mkdtempSync(path.join(tmpdir(), 'leakhunt-'));
 
+// ── LEAK_COMPOSITION=1: what the baseline is actually made of ────────────────
+//
+// Knowing the floor matters as much as knowing the growth. Most of it is
+// loaded once and never released, so if the floor is close to the ceiling
+// there is nothing left for a peak — which is a different fault from a leak
+// and has a different fix.
+if (process.env['LEAK_COMPOSITION']) {
+  const dataDir = path.join(ROOT, 'data');
+  const stage = async (name, load) => {
+    const before = settled();
+    const held = await load();
+    const after = settled();
+    console.log(`  ${name.padEnd(22)} ${mb(after - before).padStart(7)} MB`);
+    return held;
+  };
+  console.log('baseline, loaded once and kept for the life of the process:\n');
+  const kept = [];
+  const { GtfsStatic } = await import(path.join(ROOT, 'dist-server/server/GtfsStatic.js'));
+  const { RailGraph } = await import(path.join(ROOT, 'dist-server/server/RailGraph.js'));
+  const { SignalIndex } = await import(path.join(ROOT, 'dist-server/server/Signals.js'));
+  kept.push(await stage('GTFS static', () => GtfsStatic.load(dataDir)));
+  kept.push(await stage('rail graph + vmax', () => RailGraph.load(dataDir)));
+  kept.push(await stage('signals', () => SignalIndex.load(dataDir)));
+  console.log(`\n  ${'total baseline'.padEnd(22)} ${mb(settled()).padStart(7)} MB`);
+  console.log(`  (${kept.length} structures held so none is collected early)`);
+  process.exit(0);
+}
+
 const { TrainStore } = await import(path.join(ROOT, 'dist-server/server/TrainStore.js'));
 
 console.log('loading static data…');
