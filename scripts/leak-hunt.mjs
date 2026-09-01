@@ -314,6 +314,41 @@ if (process.env['LEAK_FETCH']) {
   await new Promise((r) => srv.close(r));
 }
 
+// ── what a genuinely full path cache costs ───────────────────────────────────
+//
+// The earlier plateau test used random station pairs, and most of those are
+// rejected as absurd detours and cached as a cheap `null`. So the cache filled
+// on the 4 000-entry guard long before it reached the 400 000-vertex budget,
+// and the budget — the thing that actually decides how much memory this holds
+// — was never exercised. Production routes real legs, every one of which
+// succeeds, so it fills on vertices. Route real legs here and watch it.
+if (process.env['LEAK_CACHE']) {
+  const before = settled();
+  const legs = [];
+  for (const t of store.trains) {
+    for (let i = 0; i + 1 < t.calls.length; i++) {
+      const a = t.calls[i];
+      const b = t.calls[i + 1];
+      if (a.lat && b.lat) legs.push([a.lat, a.lon, b.lat, b.lon, t.family === 'tgv']);
+    }
+  }
+  console.log(`routing ${legs.length} real legs, as a day of trains does:\n`);
+  console.log('  routed   paths   vertices     heap   bytes/vertex');
+  for (let pass = 0; pass < 6; pass++) {
+    for (const [aLat, aLon, bLat, bLon, fast] of legs) {
+      store.rail.path(aLat, aLon, bLat, bLon, fast);
+    }
+    const h = settled();
+    const c = store.rail.cacheStats;
+    console.log(
+      `  ${String((pass + 1) * legs.length).padStart(6)}  ${String(c.paths).padStart(6)}` +
+        `  ${String(c.points).padStart(9)}  ${mb(h).padStart(7)} MB` +
+        `  ${c.points ? ((h - before) / c.points).toFixed(0).padStart(6) : '     -'}`,
+    );
+  }
+  process.exit(0);
+}
+
 console.log('\n─── settled cost per iteration ───');
 for (const [k, v] of Object.entries(results).filter(([, v]) => v !== null)) {
   console.log(`  ${k.padEnd(12)} ${v.toFixed(0).padStart(8)} B`);
