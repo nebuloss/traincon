@@ -189,8 +189,6 @@ export class ApiServer {
         }),
       );
     });
-
-  });
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
