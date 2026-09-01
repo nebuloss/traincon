@@ -17,8 +17,12 @@ jobs:
 
       - run: npm ci
 
-      - name: Build and test the client
+      # typecheck is separate from build on purpose: vite strips types without
+      # checking them, so every strict setting in tsconfig.json is unenforced
+      # unless tsc is run in its own right.
+      - name: Check the client
         run: |
+          npm run typecheck
           npm run build
           npm test
 

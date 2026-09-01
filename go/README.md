@@ -1,16 +1,16 @@
 # traincon — Go backend
 
-A port of `src/server/`. Every package is ported, the binary serves the whole
-API, and it is running on the production container beside the Node service —
-`traincon-go` on port 3001, supervised on the same terms, with its own data
-directory so it cannot touch the live one's state. The Node service is still
-what the public sees.
+The server. It is what production runs: one static binary, supervised by
+OpenRC, serving the API and the client bundle.
+
+It began as a port of a TypeScript server, which is where the comparisons below
+come from — that server was removed once this one had replaced it, so those
+figures are history rather than a live A/B.
 
 ## Why
 
-Measured on the running server, not assumed:
-
-On the production container, both on the live feed:
+Measured while both were running on the production container, on the same live
+feed:
 
 | | Node | Go |
 |---|---|---|
@@ -71,7 +71,7 @@ a machine with no data.
     TRAINCON_DATA=$HOME/traincon/data go test ./...
     TRAINCON_DATA=$HOME/traincon/data go test ./internal/rail/ -bench . -benchmem
 
-## Equivalence with the TypeScript server
+## How the port was checked
 
 The port is pinned to the original at every boundary where a number can be
 compared, because "it looks right" is not a check:
@@ -119,7 +119,7 @@ Everything else is the standard library — `net/http`, `encoding/csv`,
 `archive/zip` (which is why there is no longer an `unzip` binary to install),
 `compress/gzip`, `encoding/json`.
 
-## Deliberate differences from the TypeScript
+## Where it deliberately differs from what it replaced
 
 Two, both found by tests written against the original's behaviour, and both
 recorded where they live:
@@ -136,20 +136,24 @@ Everything else is faithful, and pinned by the equivalence tests above.
 
 ## Deploying it
 
-`install.sh` installs either server; `TRAINCON_RUNTIME=go` picks this one, and
-then there is no Node, no `node_modules` and no `unzip` to install — the
-release carries a single static binary. The release workflow builds it with
-`CGO_ENABLED=0` and attaches `traincon-linux-amd64`; CI runs `gofmt`, `go vet`
-and `go test` on every push.
+`install.sh` needs `curl` and `tar` on the target and nothing else — no
+runtime, no package manager, no `unzip`, because the server reads the GTFS
+archive itself through `archive/zip`.
 
-## Not yet done
+The release workflow builds with `CGO_ENABLED=0` for `amd64`, `arm64` and
+`armv7`, and publishes `SHA256SUMS` beside them; the installer picks the build
+matching `uname -m` and verifies it before making it executable. CI runs
+`gofmt`, `go vet` and `go test` on every push.
 
-- **The cutover.** Production still runs the Node service. Switching it means
-  re-running the installer with `TRAINCON_RUNTIME=go`, and it should follow a
-  soak long enough to cover a full day — including the twelve-hourly static
-  refresh, which is what killed the Node process on five separate days.
-- The store has no test that boots it against real data; the contract tests
-  cover the wire format, and the side-by-side covers the rest.
+## Known gaps
+
+- The store has no test that boots it against real data. The contract tests
+  cover the wire format and the package tests cover the pieces; what is not
+  automated is the end-to-end comparison, which was run by hand against the
+  server this replaced and cannot be repeated now that it is gone.
+- Several tests skip without the SNCF exports, which CI does not have: the
+  graph, the schedule and the full feed decode. The protobuf path is covered
+  regardless by the capture in `internal/feed/testdata`.
 
 The client stays TypeScript and needs no changes: the contract between them is
 JSON, and the only behaviour shared across the boundary is `plausibleSpeed` and

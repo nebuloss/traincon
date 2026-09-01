@@ -53,9 +53,14 @@ func FromFeed(t feed.Train) *Train {
 	}
 }
 
-// Origin, Destination and Terminus name the ends of the journey.
-func (t *Train) Origin() string      { return t.Calls[0].Name }
+// Origin is where the journey starts.
+func (t *Train) Origin() string { return t.Calls[0].Name }
+
+// Destination is where it ends.
 func (t *Train) Destination() string { return t.Terminus().Name }
+
+// Terminus is the last call, which carries the arrival the whole run is judged
+// against.
 func (t *Train) Terminus() feed.Call { return t.Calls[len(t.Calls)-1] }
 
 // Meta is how the service presents itself.
