@@ -32,7 +32,7 @@ async function writeEnv(dir, key) {
     SNCF_API_KEY='${key}'
     info() { :; }
     chown() { :; }
-    heap_limit() { echo 281; }
+    memory_ceiling() { echo 819; }
     eval "$(sed -n '/^stored_api_key()/,/^}/p' '${INSTALL}')"
     eval "$(sed -n '/^write_env()/,/^}/p' '${INSTALL}')"
     write_env
@@ -52,7 +52,8 @@ test('a key given at install time is stored', async () => {
     const env = await writeEnv(dir, 'first-key');
     assert.match(env, /^SNCF_API_KEY=first-key$/m);
     assert.match(env, /^PORT=3000$/m);
-    assert.match(env, /^NODE_OPTIONS=--max-old-space-size=281$/m);
+    assert.match(env, /^GOMEMLIMIT=819MiB$/m);
+    assert.match(env, new RegExp(`^TRAINCON_ROOT=${dir}$`, 'm'));
   } finally {
     await cleanup();
   }
