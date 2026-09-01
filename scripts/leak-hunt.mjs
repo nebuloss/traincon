@@ -261,6 +261,59 @@ if (process.env['LEAK_HTTP']) {
   await api.close();
 }
 
+// ── the fetch error paths, which a file replay never touches ─────────────────
+//
+// Both callers throw on a bad status without consuming the body:
+//
+//   if (!res.ok) throw new Error(`GTFS-RT fetch failed: HTTP ${res.status}`);
+//
+// An undici response body is a stream over a pooled connection. Abandoning it
+// unread leaves that connection and its buffers held until something finalises
+// them. This is the one path the harness could not reach by replaying a file,
+// and FeedClient's own comment says the proxy resets often enough to need
+// three attempts — so production takes it, repeatedly, all day.
+if (process.env['LEAK_FETCH']) {
+  const http = await import('node:http');
+  const BIG = Buffer.alloc(512 * 1024, 'x');
+  const srv = http.createServer((req, res) => {
+    const bad = req.url.startsWith('/bad');
+    res.writeHead(bad ? 503 : 200, { 'content-length': String(BIG.length) });
+    res.end(BIG);
+  });
+  await new Promise((r) => srv.listen(0, r));
+  const B = `http://127.0.0.1:${srv.address().port}`;
+
+  results['undrained'] = await probe('bad response, body abandoned (what we do)', async () => {
+    try {
+      const res = await fetch(`${B}/bad`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await res.arrayBuffer();
+    } catch {
+      /* as the callers do: retry, then give up */
+    }
+  });
+
+  results['cancelled'] = await probe('bad response, body cancelled first', async () => {
+    try {
+      const res = await fetch(`${B}/bad`);
+      if (!res.ok) {
+        await res.body?.cancel();
+        throw new Error(`HTTP ${res.status}`);
+      }
+      await res.arrayBuffer();
+    } catch {
+      /* same, but the stream was released */
+    }
+  });
+
+  results['ok'] = await probe('good response, drained (the control)', async () => {
+    const res = await fetch(`${B}/ok`);
+    await res.arrayBuffer();
+  });
+
+  await new Promise((r) => srv.close(r));
+}
+
 console.log('\n─── settled cost per iteration ───');
 for (const [k, v] of Object.entries(results).filter(([, v]) => v !== null)) {
   console.log(`  ${k.padEnd(12)} ${v.toFixed(0).padStart(8)} B`);
