@@ -30,12 +30,12 @@ func at(number string, lat, lon, bearing, kmh, progress float64) Follower {
 
 func TestApproachSpeed(t *testing.T) {
 	tests := []struct {
-		name       string
-		distanceM  float64
-		freeKmh    float64
-		targetKmh  float64
-		want       float64
-		tolerance  float64
+		name      string
+		distanceM float64
+		freeKmh   float64
+		targetKmh float64
+		want      float64
+		tolerance float64
 	}{
 		// The worked example from the rule: 1 800 m from a stop signal is
 		// about 150 km/h.
@@ -72,9 +72,9 @@ func TestHeadingGap(t *testing.T) {
 		{0, 0, 0},
 		{0, 90, 90},
 		{0, 180, 180},
-		{10, 350, 20},   // across north
-		{350, 10, 20},   // and back
-		{0, 270, 90},    // the short way round
+		{10, 350, 20}, // across north
+		{350, 10, 20}, // and back
+		{0, 270, 90},  // the short way round
 	}
 	for _, tc := range tests {
 		if got := headingGap(tc.a, tc.b); math.Abs(got-tc.want) > 1e-9 {
