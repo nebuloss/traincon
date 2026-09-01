@@ -15,7 +15,9 @@ import (
 type TrainDTO struct {
 	ID           string      `json:"id"`
 	Number       string      `json:"number"`
-	Service      string      `json:"service"`
+	// Service is the marker the static schedule carries, or null where it
+	// knows none — which the client distinguishes from an empty label.
+	Service      *string     `json:"service"`
 	ServiceLabel string      `json:"serviceLabel"`
 	Family       gtfs.Family `json:"family"`
 	Line         string      `json:"line"`
@@ -181,8 +183,12 @@ func nextCallOf(t *train.Train, now int64) *NextCall {
 // toDTO turns a train into the shape the API serves.
 func (s *Store) toDTO(v view, now int64) TrainDTO {
 	t, c := v.train, v.corrected
+	var service *string
+	if c.Service != "" {
+		service = &c.Service
+	}
 	dto := TrainDTO{
-		ID: c.ID, Number: c.Number, Service: c.Service,
+		ID: c.ID, Number: c.Number, Service: service,
 		ServiceLabel: v.meta.Label, Family: v.meta.Family, Line: c.Line,
 		Origin: c.Origin(), Destination: c.Destination(), Calls: c.Calls,
 		Cancelled: c.Cancelled,
