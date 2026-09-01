@@ -237,7 +237,7 @@ type Position struct {
 	LegKm       *float64    `json:"legKm,omitempty"`
 	DistKm      *float64    `json:"distKm,omitempty"`
 	SpeedKmh    float64     `json:"speedKmh"`
-	AvgKmh      *float64    `json:"avgKmh,omitempty"`
+	AvgKmh      float64     `json:"avgKmh"`
 	LimitKmh    *float64    `json:"limitKmh,omitempty"`
 	Geometry    string      `json:"geometry"`
 	Observation Observation `json:"observation"`
@@ -322,8 +322,7 @@ func (t *Train) fillFromPath(pos *Position, path *rail.Path, leg Leg, obs Observ
 	pos.Lat, pos.Lon, pos.Bearing = pt.Lat, pt.Lon, pt.Bearing
 	pos.LegKm, pos.DistKm = &legKm, &distKm
 	if legHours > 0 {
-		avg := math.Round(PlausibleSpeed(path.Total/legHours, t.Family(), pt.LimitKmh, pt.HasLimitKmh))
-		pos.AvgKmh = &avg
+		pos.AvgKmh = math.Round(PlausibleSpeed(path.Total/legHours, t.Family(), pt.LimitKmh, pt.HasLimitKmh))
 	}
 	if pt.HasLimitKmh {
 		limit := pt.LimitKmh

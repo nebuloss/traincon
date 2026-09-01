@@ -31,7 +31,7 @@ type TrainDTO struct {
 	OwnDelay    int64                    `json:"ownDelay"`
 	WorstDelay  int64                    `json:"worstDelay"`
 	Position    train.Position           `json:"position"`
-	Next        *NextCall                `json:"next"`
+	Next        *feed.Call               `json:"next"`
 	Trend       Trend                    `json:"trend"`
 	History     []DelaySample            `json:"history"`
 	CoupledWith []string                 `json:"coupledWith"`
@@ -172,6 +172,16 @@ func (s *Store) trend(number string) Trend {
 	}
 }
 
+// fullNextCall is the next call whole, as the full DTO carries it.
+func fullNextCall(t *train.Train, now int64) *feed.Call {
+	c, ok := t.NextCall(now)
+	if !ok {
+		return nil
+	}
+	return &c
+}
+
+// nextCallOf is the reduced form the map payload and the autocomplete carry.
 func nextCallOf(t *train.Train, now int64) *NextCall {
 	c, ok := t.NextCall(now)
 	if !ok {
@@ -197,7 +207,7 @@ func (s *Store) toDTO(v view, now int64) TrainDTO {
 		// of keeping both.
 		OwnDelay:    t.CurrentDelay(now),
 		WorstDelay:  t.WorstDelay(),
-		Next:        nextCallOf(c, now),
+		Next:        fullNextCall(c, now),
 		Trend:       s.trend(t.Number),
 		History:     s.history[t.Number],
 		CoupledWith: s.couples.Partners[t.Number],
