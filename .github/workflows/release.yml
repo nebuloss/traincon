@@ -30,15 +30,35 @@ jobs:
           go-version: '1.24'
           cache-dependency-path: go/go.sum
 
-      # Static, so the container needs no Go toolchain and no shared libraries
-      # — and CGO off is what makes it static on a glibc builder.
-      - name: Build the Go server
+      # Static, so a target needs no Go toolchain and no shared libraries — and
+      # CGO off is what makes it static, and what makes cross-compiling free:
+      # no toolchain per architecture, no emulation, seconds per target.
+      #
+      # amd64 and arm64 cover the ordinary hosts, including the Pi 4 and 5 and
+      # the ARM instances the cloud providers give away. armv7 is for the older
+      # 32-bit Pis, which are exactly the machines something like this ends up
+      # on. Nothing else: this needs OpenRC or systemd, so a macOS or Windows
+      # build would serve nobody.
+      - name: Build the Go server for every architecture
         working-directory: go
         env:
           CGO_ENABLED: '0'
         run: |
           go test ./...
-          go build -trimpath -ldflags='-s -w' -o ../traincon-linux-amd64 ./cmd/traincon
+          build() {
+            GOOS=linux GOARCH="$1" GOARM="${3:-}" \
+              go build -trimpath -ldflags='-s -w' -o "../traincon-linux-$2" ./cmd/traincon
+            echo "  $2: $(stat -c%s "../traincon-linux-$2") bytes"
+          }
+          build amd64 amd64
+          build arm64 arm64
+          build arm   armv7 7
+
+      # The installer downloads an executable over the network and runs it as
+      # root. Publishing the digests lets it check that what arrived is what
+      # was built here, which costs one file.
+      - name: Checksums
+        run: sha256sum traincon-linux-* traincon.tar.gz > SHA256SUMS
 
       - name: Package
         # The client bundle and the one script the installer runs. No
@@ -55,5 +75,8 @@ jobs:
           files: |
             traincon.tar.gz
             traincon-linux-amd64
+            traincon-linux-arm64
+            traincon-linux-armv7
+            SHA256SUMS
             data/geo/signals.json.gz
           generate_release_notes: true

@@ -32,7 +32,6 @@ APP_PORT="${APP_PORT:-3000}"
 SERVICE_NAME="${SERVICE_NAME:-traincon}"
 SERVICE_USER="${SERVICE_USER:-traincon}"
 GH_REPO="${GH_REPO:-nebuloss/traincon}"
-GO_BINARY="traincon-linux-amd64"
 TARBALL="${TARBALL:-}"              # install this archive instead of a release
 VERSION="${VERSION:-}"              # install this tag instead of the newest
 SNCF_API_KEY="${SNCF_API_KEY:-}"    # optional
@@ -82,6 +81,19 @@ detect_platform() {
   else
     die "unsupported system (needs Alpine or Debian/Ubuntu)"
   fi
+}
+
+# Which build to fetch, from the machine's own architecture.
+#
+# Getting this wrong is not a friendly failure: the wrong binary runs and the
+# kernel says "Exec format error", which says nothing about why.
+detect_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64)   GO_BINARY=traincon-linux-amd64 ;;
+    aarch64|arm64)  GO_BINARY=traincon-linux-arm64 ;;
+    armv7l|armv6l)  GO_BINARY=traincon-linux-armv7 ;;
+    *) die "no build for $(uname -m) — amd64, arm64 and armv7 are published" ;;
+  esac
 }
 
 # Install packages. Errors are reported but not fatal: a package left broken
@@ -285,6 +297,39 @@ ensure_tools() {
   fi
 }
 
+# Check a downloaded file against the release's published digest.
+#
+# This runs an executable as root a few lines later, so "it downloaded" is not
+# the same as "it is what was built". A missing SHA256SUMS is not fatal — a
+# release predating it should still install — but a mismatch is.
+verify_download() {
+  file="$1"; name="$2"; tag="$3"
+
+  if ! command -v sha256sum >/dev/null 2>&1; then
+    warn "sha256sum not available: cannot verify $name"
+    return 0
+  fi
+
+  sums="$(curl -fsSL "https://github.com/${GH_REPO}/releases/download/${tag}/SHA256SUMS" 2>/dev/null)" || sums=""
+  if [ -z "$sums" ]; then
+    warn "no SHA256SUMS in $tag: cannot verify $name"
+    return 0
+  fi
+
+  want="$(printf '%s\n' "$sums" | awk -v n="$name" '$2 == n || $2 == "*"n {print $1; exit}')"
+  if [ -z "$want" ]; then
+    warn "$name is not listed in SHA256SUMS: cannot verify it"
+    return 0
+  fi
+
+  got="$(sha256sum "$file" | awk '{print $1}')"
+  if [ "$got" != "$want" ]; then
+    rm -f "$file"
+    die "$name does not match its published checksum — refusing to install it"
+  fi
+  info "Checksum verified: $name"
+}
+
 resolve_release_tag() {
   if [ -n "$VERSION" ]; then
     printf '%s' "$VERSION"
@@ -320,8 +365,10 @@ unpack_release() {
   rm -f "$dest/app.tar.gz"
 
   # The server: one static file, no runtime and no dependencies behind it.
+  info "Architecture: $(uname -m) -> $GO_BINARY"
   url="https://github.com/${GH_REPO}/releases/download/${tag}/${GO_BINARY}"
   curl -fsSL "$url" -o "$dest/traincon" || die "download failed: $url"
+  verify_download "$dest/traincon" "$GO_BINARY" "$tag"
   chmod +x "$dest/traincon"
 }
 
@@ -543,6 +590,7 @@ print_summary() {
 
 main() {
   require_root
+  detect_arch
   ensure_tools
 
   install_app
