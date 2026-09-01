@@ -131,6 +131,73 @@ if (process.env['LEAK_COMPOSITION']) {
   process.exit(0);
 }
 
+// ── LEAK_DAY=1: a whole day, compressed ──────────────────────────────────────
+//
+// Replaying one capture keeps every train's identity forever, and the clock
+// barely moves. Production does neither: thousands of distinct numbers pass
+// through in a day, and `prune()` only lets go of one two hours after it left
+// the feed. So a fixed replay cannot show a leak that is keyed on train
+// identity — which is the shape of leak this code has had twice before.
+//
+// This drives a fake clock a minute per poll, so pruning happens on its real
+// schedule, and rotates a fifth of the train numbers every simulated hour, so
+// roughly six thousand distinct trains pass through as they would in a day.
+if (process.env['LEAK_DAY']) {
+  const { default: pkg } = await import('gtfs-realtime-bindings');
+  const { transit_realtime: rtb } = pkg;
+  const { readFileSync } = await import('node:fs');
+
+  const base = rtb.FeedMessage.decode(new Uint8Array(readFileSync(fixture)));
+  const originals = base.entity.map((e) => e.id);
+
+  /** The capture with a fifth of its trains given numbers never seen before. */
+  function variant(hour) {
+    for (let i = 0; i < base.entity.length; i++) {
+      const id = originals[i];
+      const m = /^OCE([A-Z]{2})(\d+)F/.exec(id ?? '');
+      base.entity[i].id =
+        m && i % 5 === hour % 5 ? `OCE${m[1]}${900000 + hour * 1000 + (i % 1000)}F` : id;
+    }
+    return Buffer.from(rtb.FeedMessage.encode(base).finish());
+  }
+
+  // A clock the store can be walked through, so two hours really pass.
+  let clock = Date.now();
+  const realNow = Date.now;
+  Date.now = () => clock;
+  process.env['SNCF_FEED_SHIFT'] = 'auto'; // rebases the capture onto the fake now
+
+  const { TrainStore: TS } = await import(path.join(ROOT, 'dist-server/server/TrainStore.js'));
+  const day = new TS(path.join(ROOT, 'data'));
+  await day.start();
+  day.stop();
+  day.dataDir = scratch;
+
+  console.log('simulating 24 hours, a minute per poll:\n');
+  console.log('  hour   heap    trains  history  lastSeen  paths   points');
+  const seen = new Set();
+  for (let minute = 0; minute < 24 * 60; minute++) {
+    const hour = Math.floor(minute / 60);
+    if (minute % 60 === 0) writeFileSync(fixture, variant(hour));
+    clock += 60_000;
+    await day.refresh();
+    for (const t of day.trains) seen.add(t.number);
+    if (minute % 120 === 119) {
+      const h = settled();
+      const r = day.stats().memory.retained;
+      console.log(
+        `  ${String(hour + 1).padStart(4)}  ${mb(h).padStart(6)} MB  ${String(r.trains).padStart(5)}` +
+          `  ${String(r.history).padStart(7)}  ${String(r.lastSeen).padStart(8)}` +
+          `  ${String(r.paths).padStart(5)}  ${String(r.pathPoints).padStart(7)}`,
+      );
+    }
+  }
+  Date.now = realNow;
+  console.log(`\n  ${seen.size} distinct train numbers passed through.`);
+  console.log(`  final heap ${mb(settled())} MB`);
+  process.exit(0);
+}
+
 const { TrainStore } = await import(path.join(ROOT, 'dist-server/server/TrainStore.js'));
 
 console.log('loading static data…');
