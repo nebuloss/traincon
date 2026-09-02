@@ -89,6 +89,28 @@ const MATCH_MIN_ZOOM = 14;
 /** How often the route may be re-laid onto the rails, at most. */
 const MATCH_MS = 500;
 
+/**
+ * The zoom from which the vehicles are kept ready in the source.
+ *
+ * One level below the zoom they are drawn at. Filling the source is
+ * asynchronous — it re-tiles in a worker — while hiding the disc is a CSS
+ * class and takes effect at once. Doing both at the same zoom left a gap with
+ * neither representation on screen, which is what a zoom across the threshold
+ * looked like. A level of hysteresis means the data is tiled and waiting by
+ * the time the layer switches on.
+ */
+const KEEP_BODY_ZOOM = PLAN_ZOOM - 1;
+
+/**
+ * The far anchor of the icon-size expression: MapLibre's own maximum zoom.
+ *
+ * Two stops are enough to be exact rather than approximate. Base-2
+ * interpolation between values an exact power of two apart reproduces the true
+ * scale at every zoom between them, and the scale is exactly that: a vehicle
+ * is a fixed length on the ground, so its size in pixels doubles per zoom.
+ */
+const MAX_PLAN_ZOOM = 22;
+
 /** Nothing to draw — used to create and to clear the train-body source. */
 const EMPTY_BODY: TrainCarsGeo = { type: 'FeatureCollection', features: [] };
 
@@ -146,7 +168,14 @@ export class MapView {
    */
   private centring = false;
   /** The icon scale last given to the layer, so it is only set when it moves. */
-  private iconScale: number | null = null;
+  /** The latitude the icon-size expression was last built for. */
+  private iconLat: number | null = null;
+  /** Liveries whose artwork is registered with the map and can be drawn. */
+  private readonly liveryReady = new Set<string>();
+  /** The livery the drawn train wants, so showBody knows what to wait for. */
+  private drawnLivery: string | null = null;
+  /** Whether the source actually holds vehicles at this moment. */
+  private bodyDrawn = false;
   /** Where and when that was gathered, so it is not re-queried per frame. */
   private railSegsAt = 0;
   private railSegsNear: Point | null = null;
@@ -215,12 +244,18 @@ export class MapView {
     });
     this.theme = this.themeManager.isDark ? 'dark' : 'light';
     this.map.addControl(new maplibregl.NavigationControl(), 'top-right');
-    // Crossing the threshold swaps the disc for the body drawn on the ground.
-    // Only the shape is redone, at the position the train is currently drawn
-    // at: going through drawMarker would snap it back to the last reported
-    // position for a frame, which is visible as a stutter while pinching.
+    // Crossing the threshold swaps the disc for the body drawn on the ground,
+    // and that is all a zoom can change. The vehicles' positions do not depend
+    // on it — trainCars is not given one — and their size is an expression the
+    // style evaluates for itself, so there is nothing here to rebuild.
+    //
+    // This used to call drawBody, which meant a setData and an icon-size
+    // layout property per zoom event: a source re-tile and a full symbol
+    // re-layout, both in a worker, at the display's rate. The animation loop
+    // throttles exactly that work to twelve times a second and says why; the
+    // zoom path went round the throttle.
     this.map.on('zoom', () => {
-      if (this.drawn) this.drawBody(this.drawn, this.drawnKm);
+      this.showBody();
     });
     // A pinch zooms about the fingers, not about the train, so the train can
     // end up off to one side or off the screen entirely. Once the movement
@@ -496,6 +531,16 @@ export class MapView {
     this.pathFor = null;
     this.marker?.remove();
     this.marker = null;
+    // setStyle drops the registered images along with the layers, and the set
+    // of liveries already asked for is what stops them being asked for again.
+    // Left uncleared, the vehicles never got their artwork back after a theme
+    // change — and since the disc had already been hidden for them, the train
+    // disappeared entirely.
+    this.liveries.clear();
+    this.liveryReady.clear();
+    this.drawnLivery = null;
+    this.bodyDrawn = false;
+    this.iconLat = null;
     this.map.setStyle(this.themeManager.mapStyle);
     this.map.once('styledata', () => {
       this.addRailLayers();
@@ -866,49 +911,44 @@ export class MapView {
   /**
    * Redraw the body for a train whose nose is `km` along the route.
    *
-   * Emptied rather than hidden when it is not wanted: below the threshold the
-   * marker is the representation, and leaving stale geometry in the source
-   * would flash the old position on the next zoom in.
+   * The source is kept current from a level below the zoom the vehicles are
+   * drawn at, and emptied below that or when there is no position to lay them
+   * along. Emptied rather than left stale: the old geometry would otherwise
+   * flash at the previous position on the next zoom in.
    */
   private drawBody(t: TrainDTO, km: number | null): void {
-    const zoom = this.map?.getZoom() ?? 0;
     this.drawnKm = km;
-    const wanted = this.track !== null && km !== null && zoom >= PLAN_ZOOM;
-
-    // Swap the representations first, and outside the source guard: if the
-    // train cannot be drawn the disc must stay, and if it can the disc must go.
-    const el = this.marker?.getElement();
     const src = this.map?.getSource('train-body');
-    if (el) el.classList.toggle('is-bodied', wanted && Boolean(src));
     if (!src || !this.map) return;
 
-    if (!wanted) {
-      src.setData(EMPTY_BODY);
-      return;
-    }
-
-    // The artwork has to exist before the layer can name it. Loading is
-    // asynchronous, so the first draw of a livery puts nothing on screen and
-    // the next one — a moment later, from the animation loop — puts it there.
+    // The artwork has to exist before the layer can name it, and loading it is
+    // asynchronous. Until it arrives the layer draws nothing, which is why
+    // showBody waits for it rather than hiding the disc on the zoom alone.
     const livery = liveryOf(t);
+    this.drawnLivery = livery;
     if (!this.liveries.has(livery)) {
       this.liveries.add(livery);
       void ensureLivery(this.map, livery).then((ok) => {
-        if (!ok) this.liveries.delete(livery);
+        if (ok) this.liveryReady.add(livery);
+        else this.liveries.delete(livery);
+        // The swap was waiting on exactly this.
+        this.showBody();
       });
     }
 
-    const here = this.track!.at(km!);
-    const mpp = metresPerPixel(zoom, here?.lat ?? 47);
-    // Only when it has actually changed. Setting a layout property re-lays
-    // out every symbol in the layer, and the scale only moves when the zoom
-    // does — not on the frames in between, which is most of them.
-    const scale = iconScale(mpp);
-    if (this.iconScale === null || Math.abs(scale - this.iconScale) > this.iconScale * 0.002) {
-      this.iconScale = scale;
-      this.map.setLayoutProperty('train-cars', 'icon-size', scale);
+    // Whether the vehicles can be worked out at all — a different question
+    // from whether they are on screen, which the layer's own minzoom answers
+    // without a round trip through a worker.
+    if (this.track === null || km === null || this.map.getZoom() < KEEP_BODY_ZOOM) {
+      src.setData(EMPTY_BODY);
+      this.bodyDrawn = false;
+      this.showBody();
+      return;
     }
-    const cars = trainCars(this.track!, km!, trainLengthM(t), t.family, livery, 24);
+
+    const here = this.track.at(km);
+    this.sizeIcons(here?.lat ?? 47);
+    const cars = trainCars(this.track, km, trainLengthM(t), t.family, livery, 24);
     // Each vehicle onto the rails drawn under it, and turned to match them.
     // Done per vehicle rather than for the train as a whole: that is what lays
     // a long train correctly round a curve the route only chords across.
@@ -931,6 +971,66 @@ export class MapView {
       }
     }
     src.setData(cars);
+    this.bodyDrawn = cars.features.length > 0;
+    this.showBody();
+  }
+
+  /**
+   * Which of the two representations is showing.
+   *
+   * The disc and the vehicles are drawn by different machinery — a DOM marker
+   * against a symbol layer — so something has to see to it that exactly one is
+   * on. The class hides the disc the instant it is set, while the layer needs
+   * its data tiled and its artwork registered before it can draw anything, so
+   * asking only whether the zoom is high enough leaves a moment with neither.
+   * That moment is what a zoom across the threshold looked like, and a slow
+   * train is framed at 14.5 to 15 — on the threshold — so it is the case where
+   * the gap is crossed most.
+   *
+   * The disc therefore goes only once the body can actually replace it, and
+   * everything that changes that answer calls this again.
+   */
+  private showBody(): void {
+    const el = this.marker?.getElement();
+    if (!el) return;
+    const ready =
+      this.bodyDrawn &&
+      this.drawnLivery !== null &&
+      this.liveryReady.has(this.drawnLivery) &&
+      // The same threshold the train-cars layer carries as its minzoom. If the
+      // two ever disagree, a band of zooms shows both or neither.
+      (this.map?.getZoom() ?? 0) >= PLAN_ZOOM;
+    el.classList.toggle('is-bodied', ready);
+  }
+
+  /**
+   * Size the vehicles from the zoom, once, rather than on every draw.
+   *
+   * icon-size used to be set imperatively whenever the zoom moved, and setting
+   * a layout property re-lays out every symbol in the layer. During a pinch
+   * that is a re-layout per frame, on top of a setData per frame rebuilding
+   * geometry that does not depend on the zoom at all — the churn the vehicles
+   * flickered under. As an expression the style scales them itself.
+   *
+   * Only the latitude has to be fed in, and only when the train has moved far
+   * enough north or south to matter.
+   */
+  private sizeIcons(lat: number): void {
+    if (!this.map) return;
+    // A quarter of a degree is about 28 km, over which the cosine moves by
+    // well under half a percent — far less than a pixel on a vehicle.
+    if (this.iconLat !== null && Math.abs(lat - this.iconLat) < 0.25) return;
+    this.iconLat = lat;
+    const at = (zoom: number): number => iconScale(metresPerPixel(zoom, lat));
+    this.map.setLayoutProperty('train-cars', 'icon-size', [
+      'interpolate',
+      ['exponential', 2],
+      ['zoom'],
+      PLAN_ZOOM,
+      at(PLAN_ZOOM),
+      MAX_PLAN_ZOOM,
+      at(MAX_PLAN_ZOOM),
+    ]);
   }
 
   /**

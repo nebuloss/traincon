@@ -391,6 +391,29 @@ test('style and layout are only touched when something moved', () => {
   // recalculation for no change on screen.
   const loop = src.slice(src.indexOf('const step = ()'), src.indexOf('private modelledKm'));
   assert.match(loop, /Math\.abs\(here\.bearing - lastBearing\) > 0\.5/, 'the pointer only turns when the train does');
-  const body = src.slice(src.indexOf('private drawBody('), src.indexOf('private stopAnimation('));
-  assert.match(body, /this\.iconScale === null \|\| Math\.abs\(scale - this\.iconScale\)/, 'the icon scale only when the zoom moves');
+  // The vehicles' size is an expression the style evaluates, so it is written
+  // once and only rewritten when the latitude it was built for has moved —
+  // not per zoom, and certainly not per frame.
+  const size = src.slice(src.indexOf('private sizeIcons('));
+  const sizeBody = size.slice(0, size.indexOf('\n  }\n'));
+  assert.match(sizeBody, /Math\.abs\(lat - this\.iconLat\) < 0\.25/, 'and only when the latitude moves');
+  assert.match(sizeBody, /\['exponential', 2\]/, 'base 2, which is exactly how the scale grows');
+});
+
+test('a zoom rebuilds nothing', () => {
+  // Setting a layout property re-lays out every symbol in the layer, and
+  // setData re-tiles the source; both go through a worker. The animation loop
+  // throttles exactly that work to twelve times a second and says why. The
+  // zoom handler used to call drawBody, which went round the throttle and ran
+  // both at the display's rate for the whole of a pinch — which is what the
+  // vehicles flickered under.
+  //
+  // Nothing about the vehicles depends on the zoom: trainCars is not given
+  // one, and the size is an expression. Only which representation shows does.
+  const handler = src.slice(src.indexOf("this.map.on('zoom'"));
+  const body = handler.slice(0, handler.indexOf('});'));
+  assert.match(body, /this\.showBody\(\)/, 'it settles the representation');
+  for (const forbidden of ['drawBody', 'setData', 'setLayoutProperty']) {
+    assert.doesNotMatch(body, new RegExp(forbidden), `a zoom must not call ${forbidden}`);
+  }
 });
