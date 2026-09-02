@@ -1275,12 +1275,16 @@ export class MapView {
     }
 
     const runs = matchToRails(samples, this.viewportRails(), {
-      // The same rule the train is placed by, so the route comes out on the
-      // track the train is drawn on rather than the one beside it. The line
-      // speed is left out because it varies along a journey and is only used
-      // to spot a high-speed line, which changes the answer nowhere except
-      // inside Alsace-Moselle.
-      keepLeft: (lon, lat) => keepsLeft(lon, lat),
+      // The same rule the train is placed by, and given the same line speed,
+      // so the route comes out on the track the train is drawn on rather than
+      // the one beside it.
+      //
+      // The speed is not optional here, though it looks it. It is what says
+      // whether this is a high-speed line, which is left-hand running whatever
+      // the region — and the LGV Est runs through Moselle and Bas-Rhin at
+      // 320 km/h. Left out, the whole Baudrecourt to Strasbourg section put
+      // the route on the right-hand track and the train on the left.
+      keepLeft: (lon, lat) => keepsLeft(lon, lat, this.drawn?.position.limitKmh),
       // And through a station, start from the platform road the train itself
       // was put on rather than whichever of six is nearest the first sample.
       seed: this.snappedTo,
