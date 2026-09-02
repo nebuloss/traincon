@@ -206,6 +206,13 @@ export class MapView {
       const at = this.drawnPoint();
       if (at) this.centreOnTrain(at);
     });
+    // Idle is the first moment the surveyed track is actually available: the
+    // camera has stopped and the tiles under it have loaded. A train with no
+    // animation loop gets its one chance to snap onto the rails here — before
+    // this fires there is nothing to snap to, however many times it is asked.
+    this.map.on('idle', () => {
+      if (!this.animating && this.drawn) this.settle(this.drawn);
+    });
     await new Promise<void>((r) => this.map!.on('load', () => r()));
     this.addRailLayers();
     this.addStationTracks();
@@ -605,6 +612,9 @@ export class MapView {
 
     this.drawMarker(t);
     this.startDeadReckoning(t);
+    // A moving train is placed by the loop, frame by frame. A stopped one has
+    // no loop, so it is placed here instead.
+    if (!this.animating) this.settle(t);
   }
 
   /**
@@ -846,6 +856,37 @@ export class MapView {
       }
     }
     src.setData(cars);
+  }
+
+  /**
+   * Put the train where it belongs, once.
+   *
+   * This is the work one frame of the animation loop does: find the rails
+   * under the drawn position, move the marker onto them, hold the view on it,
+   * and lay the vehicles out along them.
+   *
+   * A stopped train runs no loop — there is nothing to advance — so it used to
+   * get whatever the first draw produced and nothing ever came back. That draw
+   * happens before the tiles the snapping reads have loaded and before the
+   * framing zoom has taken effect, so both fail quietly: no track is found, no
+   * line is chosen, and the vehicles stay on the route line. At a station the
+   * route line is the stub joining the platform to the nearest point of the
+   * network, which is why the carriages sat beside the rails rather than on
+   * them — and why the train sat off centre, the view having been framed on
+   * the server's position before the marker was snapped away from it.
+   *
+   * Calling this again when the map goes idle is what fixes both: idle is the
+   * moment the tiles are in and the camera has stopped, which is exactly what
+   * the first attempt lacked.
+   */
+  private settle(t: TrainDTO): void {
+    if (!this.map || !this.marker || !this.track || this.drawnKm === null) return;
+    const here = this.track.at(this.drawnKm);
+    if (!here) return;
+    const at = this.onSurveyedTrack(here.lon, here.lat, here.bearing, t.position.limitKmh);
+    this.marker.setLngLat(at);
+    this.centreOnTrain(at);
+    this.drawBody(t, this.drawnKm);
   }
 
   /**

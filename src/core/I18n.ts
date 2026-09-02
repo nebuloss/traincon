@@ -136,6 +136,9 @@ const FR: Dict = {
   'ov.speed': 'Vitesse',
   'ov.addFav': '☆ Ajouter aux favoris',
   'ov.removeFav': '★ Retirer des favoris',
+  'ov.share': '🔗 Copier le lien',
+  'ov.shareCopied': 'Lien copié',
+  'ov.shareFailed': 'Copie impossible — voici le lien : {url}',
 
   'fav.add': 'Ajouter aux favoris',
   'fav.remove': 'Retirer des favoris',
@@ -372,6 +375,9 @@ const EN: Dict = {
   'ov.speed': 'Speed',
   'ov.addFav': '☆ Add to favourites',
   'ov.removeFav': '★ Remove from favourites',
+  'ov.share': '🔗 Copy link',
+  'ov.shareCopied': 'Link copied',
+  'ov.shareFailed': 'Could not copy — here is the link: {url}',
 
   'fav.add': 'Add to favourites',
   'fav.remove': 'Remove from favourites',

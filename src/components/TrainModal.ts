@@ -234,6 +234,7 @@ export class TrainModal {
                 class="${this.isWatched(t.number) ? 'danger' : 'accent'}">
           ${Format.esc(this.isWatched(t.number) ? tr('ov.removeFav') : tr('ov.addFav'))}
         </button>
+        <button data-act="share">${Format.esc(tr('ov.share'))}</button>
       </div>`;
   }
 

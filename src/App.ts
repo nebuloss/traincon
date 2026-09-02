@@ -194,6 +194,44 @@ export class App {
     void this.modal.open(number, tab);
   }
 
+  /**
+   * Put the open train's link on the clipboard.
+   *
+   * The address bar is already the link: opening a train pushes its URL, which
+   * is what makes one shareable in the first place, so there is nothing to
+   * build here — and nothing that can drift out of step with what a reader
+   * would have copied by hand.
+   *
+   * The Clipboard API needs a secure context, which rules it out over plain
+   * HTTP on a local network. The fallback is the old selection trick, and if
+   * even that fails the link goes in the toast so it can still be copied by
+   * hand rather than the button doing nothing at all.
+   */
+  private async shareLink(): Promise<void> {
+    const url = location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      this.toast.show(tr('ov.shareCopied'));
+      return;
+    } catch {
+      /* not a secure context, or permission refused */
+    }
+
+    const field = document.createElement('textarea');
+    field.value = url;
+    // Off-screen rather than hidden: a field with display:none cannot be
+    // selected, and the copy would quietly do nothing.
+    field.setAttribute('readonly', '');
+    field.style.position = 'fixed';
+    field.style.top = '-1000px';
+    document.body.appendChild(field);
+    field.select();
+    const copied = document.execCommand('copy');
+    field.remove();
+
+    this.toast.show(copied ? tr('ov.shareCopied') : tr('ov.shareFailed', { url }));
+  }
+
   private closeTrain(): void {
     if (this.modalPushed) {
       // Unwinds our own entry; the popstate that follows closes the modal.
@@ -372,6 +410,10 @@ export class App {
     if (go) return this.goto(go.dataset['goto'] as ViewName);
 
     const act = target.closest<HTMLElement>('[data-act]');
+    if (act?.dataset['act'] === 'share') {
+      void this.shareLink();
+      return;
+    }
     if (act?.dataset['act'] === 'togglewatch') {
       const r = this.bookmarks.toggle(act.dataset['num']!);
       if (r) void this.modal.refresh();
