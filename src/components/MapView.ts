@@ -1084,7 +1084,9 @@ export class MapView {
     const now = performance.now();
     // The tiles do not change under a still map, and this is only ever called
     // from a path that already has its own reason not to run continuously.
-    if (now - this.railViewAt < 2000) return this.railView;
+    // Zero means never gathered, which is not the same as gathered just now:
+    // on a page open less than two seconds the difference is the whole cache.
+    if (this.railViewAt && now - this.railViewAt < 2000) return this.railView;
     this.railViewAt = now;
 
     const lines: Line[] = [];
@@ -1155,7 +1157,7 @@ export class MapView {
     // and a third again so the drawn line reaches past the edge rather than
     // stopping short of it.
     const el = this.map.getContainer();
-    const mPerPx = metresPerPixel(c.lat, zoom);
+    const mPerPx = metresPerPixel(zoom, c.lat);
     const spanKm = (0.5 * Math.hypot(el.clientWidth, el.clientHeight) * mPerPx * 1.3) / 1000;
     const mid = this.track.distanceAt(c.lat, c.lng);
     const to = Math.min(this.track.length, mid + spanKm);

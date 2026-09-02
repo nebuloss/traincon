@@ -129,7 +129,10 @@ export function matchToRails(
 ): Point[][] {
   const stepM = opts.stepM ?? SAMPLE_M;
   const maxSnapM = opts.maxSnapM ?? MAX_SNAP_M;
-  const keepLeft = opts.keepLeft ?? ((): boolean => true);
+  // Annotated rather than inferred: without it the two sides of the ??
+  // infer as a union of function types, and a union cannot be called with
+  // arguments that only one member accepts.
+  const keepLeft: (lon: number, lat: number) => boolean = opts.keepLeft ?? ((): boolean => true);
   const tolM = stepM * JUMP_FACTOR + JUMP_SLACK_M;
 
   const boxes = boxed(lines);
