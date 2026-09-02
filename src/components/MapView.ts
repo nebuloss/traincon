@@ -211,7 +211,13 @@ export class MapView {
     // animation loop gets its one chance to snap onto the rails here — before
     // this fires there is nothing to snap to, however many times it is asked.
     this.map.on('idle', () => {
-      if (!this.animating && this.drawn) this.settle(this.drawn);
+      // Not while the map is off screen. The modal keeps its panels in the DOM
+      // when you switch tab, and the animation loop stops itself for the same
+      // reason — this would otherwise keep working, and keep taking the view
+      // back to a train nobody is looking at.
+      if (this.animating || !this.drawn) return;
+      if (!document.getElementById('mpanel-carte')?.classList.contains('active')) return;
+      this.settle(this.drawn);
     });
     await new Promise<void>((r) => this.map!.on('load', () => r()));
     this.addRailLayers();
