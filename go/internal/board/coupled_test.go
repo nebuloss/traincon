@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // A coupled set is one physical train published under one number per portion.
@@ -186,9 +187,12 @@ func TestThePartnershipSurvivesARestart(t *testing.T) {
 	// Coupling is detected from the live feed, and by the time anyone reads the
 	// day's ranking the train has usually finished. If it is not written down
 	// it cannot be recovered.
+	// Observed at the real now, because a board saved under another day's
+	// heading is deliberately discarded when it is loaded.
+	now := time.Now().Unix()
 	dir := t.TempDir()
 	b := New(dir)
-	b.Observe([]Train{coupled("1", 60*60, "2"), coupled("2", 60*60, "1")}, 5000)
+	b.Observe([]Train{coupled("1", 60*60, "2"), coupled("2", 60*60, "1")}, now)
 	if err := b.Save(); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -205,8 +209,12 @@ func TestThePartnershipSurvivesARestart(t *testing.T) {
 	if err := again.Load(); err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if rows := again.Top(25, noLive, noReason, 5000); len(rows) != 1 {
+	rows := again.Top(25, noLive, noReason, now)
+	if len(rows) != 1 {
 		t.Fatalf("got %d rows after a restart, want 1", len(rows))
+	}
+	if len(rows[0].CoupledWith) != 1 || rows[0].CoupledWith[0] != "2" {
+		t.Errorf("coupledWith = %v after a restart, want [2]", rows[0].CoupledWith)
 	}
 }
 
