@@ -15,7 +15,7 @@ import { aspectLamp } from './SignalAspect.ts';
 import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM, unitsOf } from './TrainIcon.ts';
 import { trainCars } from '../core/TrainBody.ts';
 import { zoomForSpeed } from '../core/Framing.ts';
-import { MAX_SNAP_M, snapToLine, snapToTrack } from '../core/TrackSnap.ts';
+import { MAX_SNAP_M, snapReach, snapToLine, snapToTrack } from '../core/TrackSnap.ts';
 import type { Line, Point } from '../core/TrackSnap.ts';
 import { keepsLeft } from '../core/RunningSide.ts';
 import { SAMPLE_M, matchToRails } from '../core/RailMatch.ts';
@@ -825,7 +825,12 @@ export class MapView {
             // it is what says whether this is a high-speed line, and neither
             // that nor the region changes over the few hundred metres between
             // the reported position and the drawn one.
-            const at = this.onSurveyedTrack(here.lon, here.lat, here.bearing, p.limitKmh);
+            // How far it may be moved depends on the chord it is drawn on: a
+            // long one across a curve puts it well outside the plain limit.
+            const at = this.onSurveyedTrack(
+              here.lon, here.lat, here.bearing, p.limitKmh,
+              snapReach(this.track.chordAt(drawKm)),
+            );
             this.marker.setLngLat(at);
             this.centreOnTrain(at);
             // After the recentre, so the stretch matched is the one that will
@@ -1060,7 +1065,10 @@ export class MapView {
     if (!this.map || !this.marker || !this.track || this.drawnKm === null) return;
     const here = this.track.at(this.drawnKm);
     if (!here) return;
-    const at = this.onSurveyedTrack(here.lon, here.lat, here.bearing, t.position.limitKmh);
+    const at = this.onSurveyedTrack(
+      here.lon, here.lat, here.bearing, t.position.limitKmh,
+      snapReach(this.track.chordAt(this.drawnKm)),
+    );
     this.marker.setLngLat(at);
     this.centreOnTrain(at);
     this.drawBody(t, this.drawnKm);
@@ -1271,7 +1279,12 @@ export class MapView {
     const samples: Sample[] = [];
     for (let km = Math.max(0, mid - spanKm); km <= to; km += SAMPLE_M / 1000) {
       const at = this.track.at(km);
-      if (at) samples.push({ lon: at.lon, lat: at.lat, bearing: at.bearing });
+      if (at) {
+        samples.push({
+          lon: at.lon, lat: at.lat, bearing: at.bearing,
+          reach: snapReach(this.track.chordAt(km)),
+        });
+      }
     }
 
     const runs = matchToRails(samples, this.viewportRails(), {
@@ -1311,6 +1324,7 @@ export class MapView {
     lat: number,
     bearing: number | null,
     limitKmh?: number | null,
+    reachM: number = MAX_SNAP_M,
   ): [number, number] {
     const zoom = this.map?.getZoom() ?? 0;
     // Only where the rails are actually drawn thickly enough for the train to
@@ -1332,7 +1346,7 @@ export class MapView {
       lat,
       bearing,
       this.nearbyTrack(lon, lat),
-      MAX_SNAP_M,
+      reachM,
       this.snappedTo,
       keepsLeft(lon, lat, limitKmh),
     );

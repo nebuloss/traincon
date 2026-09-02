@@ -45,10 +45,13 @@ test('the route is put on the side the region drives on, LGVs included', () => {
     'the matcher gets the line speed, as the train does',
   );
 
-  // And the train's own snapping still passes it, so the two agree.
+  // And the train's own snapping still passes it, so the two agree. Matched on
+  // the argument rather than on one line's worth of formatting: the call has
+  // been wrapped once already and the test failed for saying so.
+  const snap = src.slice(src.indexOf('const at = this.onSurveyedTrack('));
   assert.match(
-    src,
-    /onSurveyedTrack\(here\.lon, here\.lat, here\.bearing, p\.limitKmh\)/,
+    snap.slice(0, snap.indexOf(');')),
+    /here\.bearing,\s*p\.limitKmh/,
     'the train is placed with the same rule and the same speed',
   );
 });

@@ -120,6 +120,25 @@ export class Track {
    * asked to go backwards, which happens when a server update corrects the
    * estimate.
    */
+  /**
+   * The length of the straight the given distance falls on, metres.
+   *
+   * The route is a polyline, so between two vertices it is a chord: across a
+   * curve it cuts the corner, and the drawn train rides the chord rather than
+   * the rails. How far it can be out therefore depends on how long that chord
+   * is — which is what this is for. Spacing is 39 m on median on the Ligne des
+   * Alpes and 415 m at worst, and it is the 415 m ones that put a train sixty
+   * metres from its track.
+   */
+  chordAt(distKm: number): number {
+    const n = this.cum.length;
+    if (n < 2) return 0;
+    const d = Math.max(0, Math.min(distKm, this.length));
+    let i = 1;
+    while (i < n - 1 && this.cum[i]! < d) i++;
+    return (this.cum[i]! - this.cum[i - 1]!) * 1000;
+  }
+
   at(distKm: number): TrackPoint | null {
     const n = this.cum.length;
     if (n < 2) return null;

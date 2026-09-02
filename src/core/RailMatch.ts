@@ -77,6 +77,16 @@ export interface Sample {
   lat: number;
   /** Degrees from north, or null where it is not known. */
   bearing: number | null;
+  /**
+   * How far this sample may be moved onto the rails, metres.
+   *
+   * Per sample rather than for the whole run, because it follows from the
+   * chord the sample sits on: where the route is drawn as a long straight
+   * across a curve it is much further from the track than the usual limit
+   * allows, and refusing the correction there breaks the line exactly where it
+   * is most visibly wrong. See core/TrackSnap.snapReach.
+   */
+  reach?: number;
 }
 
 export interface MatchOpts {
@@ -281,7 +291,8 @@ export function matchToRails(
   for (const s of samples) {
     // The reach in degrees, latitude and longitude separately, so the box test
     // is in the same units as the coordinates and needs no trigonometry.
-    const dLat = maxSnapM / M_PER_DEG;
+    const reach = s.reach ?? maxSnapM;
+    const dLat = reach / M_PER_DEG;
     const dLon = dLat / Math.max(0.3, Math.cos((s.lat * Math.PI) / 180));
     const near: Line[] = [];
     for (const b of boxes) {
@@ -290,7 +301,7 @@ export function matchToRails(
       near.push(b.line);
     }
 
-    const hit = choose(candidates(s, near, maxSnapM, keepLeft(s.lon, s.lat)), prefer);
+    const hit = choose(candidates(s, near, reach, keepLeft(s.lon, s.lat)), prefer);
     if (!hit) {
       // No surveyed track within reach. Stop the run rather than reaching for
       // the schematic position, which would put a kink of several metres in an

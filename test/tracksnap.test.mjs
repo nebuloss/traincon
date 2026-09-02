@@ -19,7 +19,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { MAX_BEARING_GAP, MAX_SNAP_M, STICKY_M, headingGap, snapToLine, snapToTrack } = await import(
+const { MAX_BEARING_GAP, MAX_SNAP_FAR_M, MAX_SNAP_M, STICKY_M, headingGap, snapReach, snapToLine, snapToTrack } =
+  await import(
   path.join(ROOT, 'src/core/TrackSnap.ts')
 );
 
@@ -220,4 +221,36 @@ test('headings are compared without a front end', () => {
   assert.equal(headingGap(0, 180), 0, 'a rail pointing north is the same rail as south');
   assert.equal(headingGap(0, 90), 90);
   assert.ok(headingGap(0, 35) === 35 && MAX_BEARING_GAP > 35, 'a curve may be a few degrees out');
+});
+
+// How far a train may be moved onto the rails.
+//
+// The plain thirty metres assumes the drawn position is nearly right and only
+// needs nudging sideways. On a winding single-track line it is not: the route
+// is a polyline, its chords cut the corners of the curves, and the train rides
+// the chord. Measured on the Ligne des Alpes, where Intercités 5792 was
+// reported off the track: vertex spacing 39 m on median but 415 m at worst, and
+// 18.7% of the drawn line more than thirty metres from the rails, 61.5 m at the
+// worst point. The correction was refused exactly where it was needed most.
+
+test('a short chord keeps the tight limit', () => {
+  // Which is what stops a train in a station jumping to the platform road next
+  // door: there the route is dense, so the chords are short.
+  assert.equal(snapReach(0), MAX_SNAP_M);
+  assert.equal(snapReach(40), MAX_SNAP_M, '39 m is the median spacing on plain line');
+  assert.equal(snapReach(120), MAX_SNAP_M, 'still nothing to correct beyond the usual');
+});
+
+test('a long chord earns a longer reach', () => {
+  // A chord of length L across a curve departs from it by L²/8R; a quarter of L
+  // bounds that for any radius a railway is built with.
+  assert.equal(snapReach(200), 50);
+  assert.equal(snapReach(415), 103.75 > MAX_SNAP_FAR_M ? MAX_SNAP_FAR_M : 103.75);
+  assert.ok(snapReach(415) >= 61.5, 'enough for the worst point measured on that line');
+});
+
+test('and it is capped, however coarse the route', () => {
+  // Past this it stops being a correction and starts being a guess.
+  assert.equal(snapReach(10000), MAX_SNAP_FAR_M);
+  assert.equal(MAX_SNAP_FAR_M, 80);
 });

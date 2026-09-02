@@ -60,6 +60,33 @@ export const MAX_SNAP_M = 30;
  */
 export const MAX_BEARING_GAP = 40;
 
+/**
+ * The furthest a train may be moved onto the rails where the route is coarse.
+ *
+ * The plain limit assumes the drawn position is nearly right and only needs
+ * nudging sideways. On a winding single-track line it is not: the route is a
+ * polyline, its chords cut the corners, and on the Ligne des Alpes 18.7% of the
+ * drawn line lies more than thirty metres from the rails, sixty-one at worst.
+ * The correction was refused exactly where it was most needed, which is a train
+ * drawn in a field beside its own track.
+ *
+ * Allowed only in proportion to the chord responsible — see snapReach — so a
+ * station, where the route is dense, keeps the tight limit that stops a train
+ * jumping to the platform road next door.
+ */
+export const MAX_SNAP_FAR_M = 80;
+
+/**
+ * How far a train at this point may be moved onto the rails.
+ *
+ * A chord of length L across a curve departs from it by L squared over eight
+ * times the radius; a quarter of L bounds that for any curve a railway is built
+ * with, and is well under the half-chord that is its absolute limit.
+ */
+export function snapReach(chordM: number): number {
+  return Math.max(MAX_SNAP_M, Math.min(MAX_SNAP_FAR_M, chordM / 4));
+}
+
 const M_PER_DEG = 111_320;
 
 /** Difference between two undirected bearings, 0-90. A rail has no front. */
