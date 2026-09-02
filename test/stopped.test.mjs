@@ -65,9 +65,14 @@ test('and again once the tiles it needs have arrived', () => {
   // to snap to however many times it is asked. Idle is the moment there is.
   const idle = src.slice(src.indexOf("this.map.on('idle'"));
   assert.ok(idle.startsWith("this.map.on('idle'"), 'an idle handler exists');
-  const handler = idle.slice(0, idle.indexOf('});'));
-  assert.match(handler, /!this\.animating/, 'it leaves a running loop alone');
+  const handler = idle.slice(0, idle.indexOf('\n    });'));
+
   assert.match(handler, /this\.settle\(/, 'it places the train again');
+  // However it is spelled, a running loop must be left to do its own placing.
+  assert.match(handler, /animating/, 'it defers to the animation loop');
+  // And it must not work on a map nobody is looking at: the modal keeps its
+  // panels in the DOM when you switch tab, which is what stops the loop too.
+  assert.match(handler, /mpanel-carte/, 'only while the map tab is on screen');
 });
 
 test('the carriages are only snapped when a line was actually chosen', () => {
