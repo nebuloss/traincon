@@ -15,7 +15,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"traincon/internal/gtfs"
@@ -48,6 +50,9 @@ type Train struct {
 	FirstCall int64
 	LastCall  int64
 	HasCalls  bool
+	// Partners are the other numbers of the coupled set this train is running
+	// in, when it is running in one.
+	Partners []string
 }
 
 // Status says why a row is, or is not, live.
@@ -81,6 +86,11 @@ type Entry struct {
 	Cancelled bool  `json:"cancelled"`
 	StartsAt  int64 `json:"startsAt,omitempty"`
 	EndsAt    int64 `json:"endsAt,omitempty"`
+	// Partners is the rest of the coupled set, recorded here rather than looked
+	// up when the board is read. Coupling is detected from the live feed, and
+	// by the time anyone reads the day's ranking the train has usually finished
+	// — the knowledge has to be written down while it is still there to have.
+	Partners []string `json:"partners,omitempty"`
 }
 
 // Row is an Entry as the API serves it.
@@ -89,6 +99,10 @@ type Row struct {
 	Live   bool   `json:"live"`
 	Status Status `json:"status"`
 	Reason string `json:"reason,omitempty"`
+	// CoupledWith is the rest of the set, under the name the browser already
+	// uses for it: the row component labels a train "6173 + 6175" and tags it
+	// UM from this field, so a merged row needs no rendering of its own.
+	CoupledWith []string `json:"coupledWith,omitempty"`
 }
 
 // Board is the day's high-water marks, persisted between restarts.
@@ -174,6 +188,12 @@ func (b *Board) Observe(trains []Train, now int64) {
 		}
 
 		prev, seen := b.entries[t.Number]
+		if seen && learnPartners(prev, t.Partners) {
+			// Two portions from different origins are joined at an intermediate
+			// stop, so a train can be half way through its run before it has a
+			// partner at all — long after its peak was recorded.
+			b.dirty = true
+		}
 		if seen && !t.Cancelled && t.WorstDelay <= prev.Delay {
 			// The peak has not moved, so the entry stands — but one written
 			// before the schedule was recorded cannot say whether the train has
@@ -195,6 +215,10 @@ func (b *Board) Observe(trains []Train, now int64) {
 			}
 			cancelled = cancelled || prev.Cancelled
 		}
+		partners := t.Partners
+		if seen {
+			partners = prev.Partners
+		}
 		b.entries[t.Number] = &Entry{
 			Number:       t.Number,
 			ServiceLabel: meta.Label,
@@ -206,13 +230,36 @@ func (b *Board) Observe(trains []Train, now int64) {
 			Cancelled:    cancelled,
 			StartsAt:     t.FirstCall,
 			EndsAt:       t.LastCall,
+			Partners:     partners,
 		}
+		learnPartners(b.entries[t.Number], t.Partners)
 		b.dirty = true
 	}
 
 	if len(b.entries) > maxEntries {
 		b.trim()
 	}
+}
+
+// learnPartners folds newly seen partners into an entry, and says whether that
+// changed anything.
+//
+// A union rather than a replacement: a set is detected from the live feed and a
+// portion can drop out of it — when it does, the fact that the two ran joined
+// today is still true, and the ranking still has to merge them.
+func learnPartners(e *Entry, add []string) bool {
+	changed := false
+	for _, n := range add {
+		if n == e.Number || slices.Contains(e.Partners, n) {
+			continue
+		}
+		e.Partners = append(e.Partners, n)
+		changed = true
+	}
+	if changed {
+		slices.Sort(e.Partners)
+	}
+	return changed
 }
 
 // trim keeps only the worst, so the file stays small on a bad day.
@@ -248,21 +295,124 @@ func (b *Board) sorted() []*Entry {
 // live and reason are supplied by the caller, which owns the current snapshot
 // and the disruption index.
 func (b *Board) Top(limit int, live func(string) bool, reason func(string) string, now int64) []Row {
-	ranked := b.sorted()
-	if limit < len(ranked) {
-		ranked = ranked[:limit]
-	}
-	rows := make([]Row, 0, len(ranked))
-	for _, e := range ranked {
-		isLive := live(e.Number)
-		rows = append(rows, Row{
-			Entry:  *e,
-			Live:   isLive,
-			Status: statusOf(e, isLive, now),
-			Reason: reason(e.Number),
-		})
+	// A coupled set is one physical train published under one number per
+	// portion, so left alone it takes one line of the ranking per portion:
+	// the same route, the same delay, twice. Merged first and then cut to the
+	// limit, so the space a duplicate used to occupy goes to another train.
+	done := make(map[string]bool, len(b.entries))
+	rows := make([]Row, 0, limit)
+	for _, e := range b.sorted() {
+		if done[e.Number] {
+			continue
+		}
+		numbers, members := b.setOf(e)
+		for _, n := range numbers {
+			done[n] = true
+		}
+		// sorted() is worst first, so the entry that reached the set is already
+		// the one carrying its peak — no need to look for it again.
+		rows = append(rows, merge(e, numbers, members, live, reason, now))
+		if len(rows) == limit {
+			break
+		}
 	}
 	return rows
+}
+
+// setOf returns every number of the coupled set an entry belongs to, and the
+// entries among them.
+//
+// Walked rather than read off one entry: partnerships are recorded per number
+// and learnt from whichever end the feed revised first, so they cannot be
+// assumed symmetric. A partner with no entry of its own — its delay never
+// reached the board's threshold — still belongs to the set and still belongs
+// in the label.
+func (b *Board) setOf(e *Entry) ([]string, []*Entry) {
+	seen := map[string]bool{e.Number: true}
+	queue := []string{e.Number}
+	numbers := make([]string, 0, 2)
+	members := make([]*Entry, 0, 2)
+	for len(queue) > 0 {
+		n := queue[0]
+		queue = queue[1:]
+		numbers = append(numbers, n)
+		m, ok := b.entries[n]
+		if !ok {
+			continue
+		}
+		members = append(members, m)
+		for _, p := range m.Partners {
+			if !seen[p] {
+				seen[p] = true
+				queue = append(queue, p)
+			}
+		}
+	}
+	slices.Sort(numbers)
+	return numbers, members
+}
+
+// merge turns one coupled set into the single row it should have been.
+//
+// The delay is the lead entry's, which is the worst any portion recorded. That
+// is what the board is — the day's high-water mark — and the reconciliation
+// that stops a stale twin being believed has already been applied by the time
+// a delay is observed, so the two portions are not disagreeing here.
+func merge(lead *Entry, numbers []string, members []*Entry,
+	live func(string) bool, reason func(string) string, now int64,
+) Row {
+	e := *lead
+	e.Partners = nil
+
+	anyLive, allCancelled := false, true
+	for _, m := range members {
+		if !m.Cancelled {
+			allCancelled = false
+		}
+	}
+	e.Cancelled = allCancelled
+	// Portions that join partway can start from different places and, after a
+	// split, end at different ones. Naming only the lead's would quietly drop
+	// half the journey.
+	e.Origin = span(members, func(m *Entry) string { return m.Origin })
+	e.Destination = span(members, func(m *Entry) string { return m.Destination })
+
+	// Any number still in the feed makes the row openable, and any that names
+	// a cause explains it.
+	why := ""
+	for _, n := range numbers {
+		if live(n) {
+			anyLive = true
+		}
+		if why == "" {
+			why = reason(n)
+		}
+	}
+
+	with := make([]string, 0, len(numbers)-1)
+	for _, n := range numbers {
+		if n != e.Number {
+			with = append(with, n)
+		}
+	}
+	return Row{
+		Entry:       e,
+		Live:        anyLive,
+		Status:      statusOf(&e, anyLive, now),
+		Reason:      why,
+		CoupledWith: with,
+	}
+}
+
+// span names one end of a set's journey: the shared place, or each of them.
+func span(members []*Entry, of func(*Entry) string) string {
+	seen := make([]string, 0, len(members))
+	for _, m := range members {
+		if v := of(m); v != "" && !slices.Contains(seen, v) {
+			seen = append(seen, v)
+		}
+	}
+	return strings.Join(seen, " / ")
 }
 
 // statusOf says why a row is, or is not, live.

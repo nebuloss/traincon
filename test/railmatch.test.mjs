@@ -150,36 +150,69 @@ test('a jump along the track is a break, and the line recovers after it', () => 
   assert.ok(runs[1].length > 5, 'and the far side is still matched');
 });
 
-test('the seed picks among the roads on the side the railway runs', () => {
-  // Through a station the centreline runs up the middle of the platform roads
-  // and several are candidates. The train has already been snapped to one, and
-  // the route should come out on that one so the two agree on the drawing.
-  //
-  // Two rules, in order. Which side of the centreline the train runs on is
-  // decided first and absolutely — French trains run on the left, and that is
-  // not a matter of proximity or of what the train was doing a moment ago. The
-  // seed then chooses among the roads on that side, and only by the same few
-  // metres' head start a train gets for the track it is already on: a road
-  // genuinely further away still loses, or the route would cling to it however
-  // far it had moved.
+test('the route stays on the track it started on', () => {
+  // The bug this exists to stop, and the measurement behind it: the schematic
+  // route's own offset from the survey is about three metres on median and
+  // more in places, while the running lines of a double track are four and a
+  // half metres apart. The offset is the larger of the two, so as it drifts
+  // along the route the nearest track changes from one running line to the
+  // other, and a line drawn by choosing the nearest for each sample steps
+  // sideways between them. Reported as the blue line switching track.
+  const rails = [
+    line('west', at(-2.25, -900), at(-2.25, 900)),
+    line('east', at(2.25, -900), at(2.25, 900)),
+  ];
+  // A centreline that wanders from five metres one side to five metres the
+  // other over the run — well inside what the two surveys really disagree by,
+  // and more than enough to put the far track nearer than the near one.
+  const drifting = [at(-5, -800), at(-5, -400), at(5, 400), at(5, 800)];
+  const runs = matchToRails(walk(drifting), rails);
+
+  assert.equal(runs.length, 1, 'no break');
+  const first = east(runs[0][0]);
+  for (const p of runs[0]) {
+    assert.ok(
+      Math.abs(east(p) - first) < 0.05,
+      `changed track: ${first.toFixed(2)} m to ${east(p).toFixed(2)} m`,
+    );
+  }
+});
+
+test('a seed is the track the train is on, and it is obeyed', () => {
+  // The seed is whichever track the train itself was snapped to, so the route
+  // through a station comes out on the same platform road the train is drawn
+  // on. It settles the matter rather than nudging it: the running side already
+  // governed that choice when the train was placed, and a train genuinely on
+  // the other line — single track, works, Alsace-Moselle — is still where its
+  // route should be drawn.
   const rails = [
     line('near', at(-2.25, -300), at(-2.25, 300)),
     line('far', at(-4.5, -300), at(-4.5, 300)),
-    // On the right, so out of the running whatever the seed says.
-    line('wrong-side', at(2.25, -300), at(2.25, 300)),
+    line('other-side', at(2.25, -300), at(2.25, 300)),
   ];
   const route = walk([at(0, -250), at(0, 250)]);
 
   for (const [seed, want] of [
-    [null, -2.25],
     ['far', -4.5],
-    ['wrong-side', -2.25],
+    ['other-side', 2.25],
   ]) {
     const runs = matchToRails(route, rails, { seed, keepLeft: () => true });
     assert.equal(runs.length, 1, `${seed}: one run`);
     assert.ok(
       runs[0].every((p) => Math.abs(east(p) - want) < 0.05),
-      `seeded ${seed}: expected the road at ${want} m, got ${east(runs[0][0]).toFixed(2)}`,
+      `seeded ${seed}: expected ${want} m, got ${east(runs[0][0]).toFixed(2)}`,
     );
   }
+});
+
+test('with no seed, the side the railway runs on decides', () => {
+  // Nothing has been chosen yet, so the rule that picks is which side French
+  // trains keep to — being deterministic, it cannot flicker.
+  const rails = [
+    line('left', at(-2.25, -300), at(-2.25, 300)),
+    line('right', at(2.25, -300), at(2.25, 300)),
+  ];
+  const runs = matchToRails(walk([at(0, -250), at(0, 250)]), rails, { keepLeft: () => true });
+  assert.equal(runs.length, 1);
+  assert.ok(runs[0].every((p) => east(p) < 0), 'left-hand running');
 });

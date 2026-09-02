@@ -235,7 +235,7 @@ func (s *Store) Refresh(ctx context.Context) error {
 	// Record the day's worst before pruning drops anything. The raw trains,
 	// not the DTOs: building those routes every train over the rail graph, and
 	// doing it every minute exhausted the heap.
-	s.board.Observe(boardTrains(trains), now)
+	s.board.Observe(boardTrains(trains, couples), now)
 	if err := s.board.Save(); err != nil {
 		slog.Warn("board: could not be saved", "err", err)
 	}
@@ -245,16 +245,26 @@ func (s *Store) Refresh(ctx context.Context) error {
 	return nil
 }
 
-func boardTrains(trains []*train.Train) []board.Train {
+func boardTrains(trains []*train.Train, couples *coupling.Result) []board.Train {
 	out := make([]board.Train, 0, len(trains))
 	for _, t := range trains {
+		// The record to believe. SNCF publishes one per number of a coupled set
+		// and revises them independently, so one goes stale — that is the whole
+		// reason the detector exists. The reconciled calls are the freshest
+		// member's, which is the figure the app shows; the day's ranking should
+		// be recording the same one rather than a twin nobody was shown.
+		src := t
+		if calls, ok := couples.Calls[t.Number]; ok {
+			src = t.WithCalls(calls)
+		}
 		bt := board.Train{
 			Number: t.Number, Service: t.Service,
 			Origin: t.Origin(), Destination: t.Destination(),
-			Cancelled: t.Cancelled, WorstDelay: t.WorstDelay(),
+			Cancelled: t.Cancelled, WorstDelay: src.WorstDelay(),
+			Partners: couples.Partners[t.Number],
 		}
-		if len(t.Calls) > 0 {
-			bt.FirstCall, bt.LastCall, bt.HasCalls = t.Calls[0].Time, t.Terminus().Time, true
+		if len(src.Calls) > 0 {
+			bt.FirstCall, bt.LastCall, bt.HasCalls = src.Calls[0].Time, src.Terminus().Time, true
 		}
 		out = append(out, bt)
 	}

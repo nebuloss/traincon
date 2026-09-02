@@ -12,7 +12,7 @@ import { tr } from '../core/I18n.ts';
 import { Reckoner } from '../core/Reckoner.ts';
 import { Track } from '../core/Track.ts';
 import { aspectLamp } from './SignalAspect.ts';
-import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM } from './TrainIcon.ts';
+import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM, unitsOf } from './TrainIcon.ts';
 import { trainCars } from '../core/TrainBody.ts';
 import { zoomForSpeed } from '../core/Framing.ts';
 import { MAX_SNAP_M, snapToLine, snapToTrack } from '../core/TrackSnap.ts';
@@ -948,7 +948,9 @@ export class MapView {
 
     const here = this.track.at(km);
     this.sizeIcons(here?.lat ?? 47);
-    const cars = trainCars(this.track, km, trainLengthM(t), t.family, livery, 24);
+    // The unit count as well as the length: a coupled set is drawn as the two
+    // whole trains it is, not as one of twice the length.
+    const cars = trainCars(this.track, km, trainLengthM(t), t.family, livery, 24, unitsOf(t));
     // Each vehicle onto the rails drawn under it, and turned to match them.
     // Done per vehicle rather than for the train as a whole: that is what lays
     // a long train correctly round a curve the route only chords across.

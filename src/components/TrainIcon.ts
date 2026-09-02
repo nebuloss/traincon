@@ -132,10 +132,21 @@ export function metresPerPixel(zoom: number, lat: number): number {
   return (78271.51696 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
 }
 
+/**
+ * How many trains are coupled together as this one.
+ *
+ * The length follows from it, and so does the shape: a double TGV is two whole
+ * sets attached, with four motrices, rather than one set stretched to twice
+ * the length. See core/TrainBody.
+ */
+export function unitsOf(t: TrainDTO): number {
+  return 1 + (t.coupledWith?.length ?? 0);
+}
+
 /** How long this train is, allowing for a coupled set. */
 export function trainLengthM(t: TrainDTO): number {
   const unit = LENGTH_M[t.family] ?? LENGTH_M.other;
-  return unit * (1 + (t.coupledWith?.length ?? 0));
+  return unit * unitsOf(t);
 }
 
 /** The glyph that stands for this train's type. */

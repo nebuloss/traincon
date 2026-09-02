@@ -353,6 +353,13 @@ export interface WorstTrainDTO {
   status: 'running' | 'finished' | 'upcoming' | 'gone';
   /** Cause as SNCF words it, when the disruption feed names one. */
   reason: string | null;
+  /**
+   * The rest of the coupled set, when this row is one physical train published
+   * under more than one number. The ranking merges those into a single line —
+   * two portions of the same train used to take two of the fifty places, with
+   * the same route and the same delay on both.
+   */
+  coupledWith?: string[];
 }
 
 export interface WorstBoardDTO {

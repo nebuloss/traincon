@@ -23,7 +23,14 @@
  * ends, and the schematic line still drawn underneath shows that stretch.
  */
 
-import { type Line, type Point, MAX_SNAP_M, snapToTrack } from './TrackSnap.ts';
+import {
+  type Line,
+  type Point,
+  MAX_BEARING_GAP,
+  MAX_SNAP_M,
+  headingGap,
+  snapToLine,
+} from './TrackSnap.ts';
 
 /**
  * How far apart to take samples along the route, in metres.
@@ -48,6 +55,19 @@ export const SAMPLE_M = 20;
  */
 const JUMP_FACTOR = 3;
 const JUMP_SLACK_M = 10;
+
+/**
+ * How much further than the nearest track another may be and still count as
+ * the same railway.
+ *
+ * The running lines of a double track are four and a half metres apart, so the
+ * pair is always within this of each other whatever the route's own error. A
+ * platform road in a station, or a siding beyond the fence, is not — and must
+ * not be, or the rule below would take the route out to the far side of the
+ * yard because that is what "furthest to the left" means when everything in
+ * sight is a candidate.
+ */
+const PAIR_M = 6;
 
 const M_PER_DEG = 111_320;
 
@@ -110,6 +130,113 @@ function boxed(lines: readonly Line[]): Boxed[] {
   return out;
 }
 
+/** One track that could be the one, with where it sits across the formation. */
+interface Cand {
+  key: string;
+  at: Point;
+  /** How far the sample had to move to reach it, metres. */
+  d: number;
+  /**
+   * How far to the side the railway runs on this track lies, metres.
+   *
+   * Measured from the sample, but only ever compared between candidates — and
+   * a common error in the sample shifts every candidate by the same amount, so
+   * their order across the formation survives it. That order is the thing the
+   * running side is a statement about: of two running lines, one is genuinely
+   * to the left of the other, whatever the route thinks its own position is.
+   */
+  side: number;
+}
+
+/**
+ * Every track this sample could belong to, with its place across the formation.
+ *
+ * Bearing-filtered, so a line crossing the route is not a candidate for
+ * carrying it.
+ */
+function candidates(
+  s: Sample,
+  lines: readonly Line[],
+  maxSnapM: number,
+  keepLeft: boolean,
+): Cand[] {
+  // The unit vector pointing to whichever side this railway runs on, in
+  // (east, north). Heading north, left is west; in Alsace-Moselle it is the
+  // other way about, which keepLeft carries.
+  const rad = ((s.bearing ?? 0) * Math.PI) / 180;
+  const hand = keepLeft ? 1 : -1;
+  const sideE = -Math.cos(rad) * hand;
+  const sideN = Math.sin(rad) * hand;
+  const kx = M_PER_DEG * Math.cos((s.lat * Math.PI) / 180);
+
+  // One entry per track, not per surveyed way: a way is served once per tile,
+  // so the same track arrives in several pieces and only its best projection
+  // is of interest.
+  const best = new Map<string, Cand>();
+  for (const line of lines) {
+    const hit = snapToLine(s.lon, s.lat, line);
+    if (!hit || hit.movedM > maxSnapM) continue;
+    if (s.bearing !== null && headingGap(hit.bearing, s.bearing) > MAX_BEARING_GAP) continue;
+
+    const seen = best.get(line.key);
+    if (seen && seen.d <= hit.movedM) continue;
+    best.set(line.key, {
+      key: line.key,
+      at: [hit.lon, hit.lat],
+      d: hit.movedM,
+      side: (hit.lon - s.lon) * kx * sideE + (hit.lat - s.lat) * M_PER_DEG * sideN,
+    });
+  }
+  return [...best.values()];
+}
+
+/**
+ * The track the route runs on, of those it could.
+ *
+ * French trains keep to the left, and to the right in Alsace-Moselle. That is a
+ * fact about the railway rather than about the drawing, so on a double track it
+ * decides — and being deterministic it cannot flicker, which choosing the
+ * nearest track for every sample independently very much could: the schematic
+ * route's own offset from the survey is about three metres on median, larger
+ * than the four and a half between the running lines, so as it drifts the
+ * nearest of the two changes and the drawn line steps sideways between them.
+ *
+ * The rule is about a pair of running lines and does not generalise past one.
+ * Where a third track is in reach the formation is a station or a multi-track
+ * section, "the side" is not a statement about anything, and taking whatever
+ * lies furthest to the left would walk the route out across the yard. There the
+ * track already in use is kept — which is what the train itself was snapped to,
+ * on the first sample — and failing that the nearest is taken.
+ */
+function choose(cands: readonly Cand[], prefer: string | null): Cand | null {
+  if (cands.length === 0) return null;
+
+  let nearest = Infinity;
+  for (const c of cands) nearest = Math.min(nearest, c.d);
+  const pool = cands.filter((c) => c.d <= nearest + PAIR_M);
+
+  if (pool.length === 2) {
+    const [a, b] = pool as [Cand, Cand];
+    // Level means one track arriving as two ways at a boundary rather than two
+    // tracks: keep the one in use, and failing that the lower key, so the
+    // answer never depends on the order the tiles were walked in.
+    if (Math.abs(a.side - b.side) < 0.05) {
+      if (a.key === prefer) return a;
+      if (b.key === prefer) return b;
+      return a.key <= b.key ? a : b;
+    }
+    return a.side > b.side ? a : b;
+  }
+
+  const held = pool.find((c) => c.key === prefer);
+  if (held) return held;
+  let best = pool[0]!;
+  for (const c of pool) {
+    if (c.d < best.d || (c.d === best.d && c.key < best.key)) best = c;
+  }
+  return best;
+}
+
 function metres(a: Point, b: Point): number {
   const kx = M_PER_DEG * Math.cos((a[1] * Math.PI) / 180);
   return Math.hypot((b[0] - a[0]) * kx, (b[1] - a[1]) * M_PER_DEG);
@@ -163,15 +290,7 @@ export function matchToRails(
       near.push(b.line);
     }
 
-    const hit = snapToTrack(
-      s.lon,
-      s.lat,
-      s.bearing,
-      near,
-      maxSnapM,
-      prefer,
-      keepLeft(s.lon, s.lat),
-    );
+    const hit = choose(candidates(s, near, maxSnapM, keepLeft(s.lon, s.lat)), prefer);
     if (!hit) {
       // No surveyed track within reach. Stop the run rather than reaching for
       // the schematic position, which would put a kink of several metres in an
@@ -181,7 +300,7 @@ export function matchToRails(
       continue;
     }
 
-    const at: Point = [hit.lon, hit.lat];
+    const at = hit.at;
     // A break, not a step. Starting a new run here rather than skipping the
     // sample keeps the walk self-correcting: were the point simply dropped,
     // every later sample would be measured against a position the route had

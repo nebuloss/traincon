@@ -91,7 +91,8 @@ test('the three families are put together differently', () => {
 });
 
 test('a longer train gets more vehicles, not longer ones', () => {
-  // A coupled 400 m TGV is two units run as one train.
+  // Length alone, with no word about coupling — see below for what a real
+  // 400 m TGV is made of.
   const one = consist('tgv', 200);
   const two = consist('tgv', 400);
   assert.ok(two.length > one.length);
@@ -278,7 +279,49 @@ test('a hauled train is not turned round: its back is a coach', () => {
   assert.equal(cars[0].properties.role, 'loco', 'the loco leads');
 });
 
-test('only the rearmost vehicle is ever turned round', () => {
+test('one unit turns exactly one vehicle round', () => {
   const cars = trainCars(straight(10), 5, 400, 'tgv', 'inoui').features;
   assert.equal(cars.filter((f) => f.properties.reversed === 1).length, 1);
+});
+
+test('a double TGV is two whole sets, not one stretched one', () => {
+  // What you see on the ground: two 200 m trains attached, so four motrices,
+  // and the middle two back to back. Drawn as a single set it had a motrice
+  // only at each far end with twenty remorques strung between them, which is
+  // not a train anyone has ever seen.
+  const single = consist('tgv', 200, 24, 1);
+  const double = consist('tgv', 400, 24, 2);
+
+  const motrices = (r) => r.filter((v) => v === 'power').length;
+  assert.equal(motrices(single), 2, 'a set has one at each end');
+  assert.equal(motrices(double), 4, 'and a pair of sets has four');
+  assert.deepEqual(double, [...single, ...single], 'it is literally the set twice');
+});
+
+test('the two sets of a double meet cab to cab', () => {
+  // The rear motrice of the leading set faces backwards in the middle of the
+  // formation, which is the whole visual difference between two coupled sets
+  // and one long one.
+  const cars = trainCars(straight(10), 5, 400, 'tgv', 'inoui', 24, 2).features;
+  const reversed = cars.filter((f) => f.properties.reversed === 1);
+  assert.equal(reversed.length, 2, 'one at the back of each set');
+  for (const f of reversed) assert.equal(f.properties.role, 'power');
+
+  // And the front of the train is never turned, however the units divide.
+  const lead = cars.find((f) => f.properties.lead === 1);
+  assert.equal(lead.properties.reversed, 0, 'the nose faces the way it is going');
+});
+
+test('a coupled multiple unit gets four cabs too', () => {
+  // Two Z-TERs joined is the commonest double there is, and it has a cab at
+  // each end of each unit — the rule is not a TGV special case.
+  const roles = consist('ter', 160, 24, 2);
+  assert.equal(roles.filter((r) => r === 'emu-cab').length, 4);
+});
+
+test('the vehicle cap is on the train, not on each unit', () => {
+  // Otherwise a double set quietly draws twice the limit, and a long one turns
+  // back into the hatching the cap exists to prevent.
+  assert.ok(consist('tgv', 5000, 12, 2).length <= 12);
+  assert.ok(consist('tgv', 5000, 12, 3).length <= 12);
 });
