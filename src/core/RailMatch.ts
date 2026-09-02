@@ -23,7 +23,7 @@
  * ends, and the schematic line still drawn underneath shows that stretch.
  */
 
-import { type Line, type Point, MAX_SNAP_M, snapToTrack } from './TrackSnap';
+import { type Line, type Point, MAX_SNAP_M, snapToTrack } from './TrackSnap.ts';
 
 /**
  * How far apart to take samples along the route, in metres.

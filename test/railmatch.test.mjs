@@ -150,28 +150,36 @@ test('a jump along the track is a break, and the line recovers after it', () => 
   assert.ok(runs[1].length > 5, 'and the far side is still matched');
 });
 
-test('the seed decides which of several parallel roads the route takes', () => {
+test('the seed picks among the roads on the side the railway runs', () => {
   // Through a station the centreline runs up the middle of the platform roads
-  // and any of them is a candidate. The train has already been snapped to one;
-  // the route should come out on that one, so the two agree on the drawing.
+  // and several are candidates. The train has already been snapped to one, and
+  // the route should come out on that one so the two agree on the drawing.
+  //
+  // Two rules, in order. Which side of the centreline the train runs on is
+  // decided first and absolutely — French trains run on the left, and that is
+  // not a matter of proximity or of what the train was doing a moment ago. The
+  // seed then chooses among the roads on that side, and only by the same few
+  // metres' head start a train gets for the track it is already on: a road
+  // genuinely further away still loses, or the route would cling to it however
+  // far it had moved.
   const rails = [
-    line('p1', at(-9, -300), at(-9, 300)),
-    line('p2', at(-4.5, -300), at(-4.5, 300)),
-    line('p3', at(0, -300), at(0, 300)),
-    line('p4', at(4.5, -300), at(4.5, 300)),
+    line('near', at(-2.25, -300), at(-2.25, 300)),
+    line('far', at(-4.5, -300), at(-4.5, 300)),
+    // On the right, so out of the running whatever the seed says.
+    line('wrong-side', at(2.25, -300), at(2.25, 300)),
   ];
-  const route = walk([at(-2, -250), at(-2, 250)]);
+  const route = walk([at(0, -250), at(0, 250)]);
 
-  const seeded = matchToRails(route, rails, { seed: 'p1', keepLeft: () => true });
-  assert.equal(seeded.length, 1);
-  assert.ok(
-    seeded[0].every((p) => Math.abs(east(p) + 9) < 0.05),
-    'it stays on the road the train is on',
-  );
-
-  // And with no seed it still picks exactly one, rather than weaving.
-  const free = matchToRails(route, rails, { keepLeft: () => true });
-  assert.equal(free.length, 1);
-  const first = east(free[0][0]);
-  assert.ok(free[0].every((p) => Math.abs(east(p) - first) < 0.05), 'one road, held');
+  for (const [seed, want] of [
+    [null, -2.25],
+    ['far', -4.5],
+    ['wrong-side', -2.25],
+  ]) {
+    const runs = matchToRails(route, rails, { seed, keepLeft: () => true });
+    assert.equal(runs.length, 1, `${seed}: one run`);
+    assert.ok(
+      runs[0].every((p) => Math.abs(east(p) - want) < 0.05),
+      `seeded ${seed}: expected the road at ${want} m, got ${east(runs[0][0]).toFixed(2)}`,
+    );
+  }
 });

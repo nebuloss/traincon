@@ -37,7 +37,7 @@ test('the train is drawn from artwork, one symbol per vehicle', () => {
 test('the map adds the layers this test thinks it does', () => {
   // A guard on the guard: if the layers are renamed, the assertions below
   // would quietly pass against nothing.
-  for (const id of ['follow-path', 'train-cars', 'osm-track-bed']) {
+  for (const id of ['follow-path', 'follow-real', 'train-cars', 'osm-track-bed']) {
     assert.ok(added.includes(id), `no layer called ${id} any more`);
   }
 });
@@ -50,6 +50,28 @@ test('the route layers are inserted under the train, not on top of it', () => {
   const upToEnd = followBlock.slice(0, followBlock.indexOf('this.pathFor = t.number'));
   const inserts = [...upToEnd.matchAll(/\n\s*underTrain,/g)];
   assert.equal(inserts.length, 2, 'follow-path and follow-stops both need a beforeId');
+});
+
+test('the matched route goes under the ballast, not over it', () => {
+  // It marks which tracks the journey uses, so it has to be visible alongside
+  // the track without covering it: drawn beneath, the bed, sleepers and rails
+  // are laid on top and it shows as a coloured edge either side of them.
+  // Drawn above, it would hide the very track it is pointing at.
+  const block = src.slice(src.indexOf("id: 'follow-real'"));
+  const upToNext = block.slice(0, block.indexOf("id: 'follow-path'"));
+  assert.match(
+    upToNext,
+    /this\.map\.getLayer\('osm-track-bed'\) \? 'osm-track-bed' : underTrain,/,
+    'inserted before the track bed, falling back to the train',
+  );
+
+  // The rail layers are built during init and the route layers on first show,
+  // so the target is there by the time the beforeId names it — the fallback is
+  // for a style still loading, not for the ordinary case.
+  assert.ok(
+    src.indexOf('addRailLayers()') < src.indexOf("id: 'follow-real'"),
+    'the tracks must be set up before a train is shown',
+  );
 });
 
 test('the insertion point is the train body, and it exists by then', () => {
