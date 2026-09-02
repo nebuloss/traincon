@@ -18,6 +18,8 @@ import { zoomForSpeed } from '../core/Framing.ts';
 import { MAX_SNAP_M, snapToLine, snapToTrack } from '../core/TrackSnap.ts';
 import type { Line, Point } from '../core/TrackSnap.ts';
 import { keepsLeft } from '../core/RunningSide.ts';
+import { SAMPLE_M, matchToRails } from '../core/RailMatch.ts';
+import type { Sample } from '../core/RailMatch.ts';
 import { ensureLivery, iconScale } from '../core/TrainArt.ts';
 import { plausibleSpeed } from '../core/stock.ts';
 import { distanceFraction } from '../core/motion.ts';
@@ -73,6 +75,19 @@ declare const maplibregl: {
 };
 
 export type MapMode = 'train' | 'route';
+
+/**
+ * The zoom at which the route stops being drawn as a schematic and starts
+ * being drawn on the rails.
+ *
+ * It is where the centreline begins to fade, which is where its disagreement
+ * with the track under it first becomes visible: a railway is a single stroke
+ * on the map below this, so there is nothing to be beside.
+ */
+const MATCH_MIN_ZOOM = 14;
+
+/** How often the route may be re-laid onto the rails, at most. */
+const MATCH_MS = 500;
 
 /** Nothing to draw — used to create and to clear the train-body source. */
 const EMPTY_BODY: TrainCarsGeo = { type: 'FeatureCollection', features: [] };
@@ -135,6 +150,17 @@ export class MapView {
   /** Where and when that was gathered, so it is not re-queried per frame. */
   private railSegsAt = 0;
   private railSegsNear: Point | null = null;
+
+  /**
+   * Surveyed track across the whole view, as opposed to the box around the
+   * train that railSegs holds. Matching the route needs everything on screen;
+   * snapping the train needs only what is under it.
+   */
+  private railView: Line[] = [];
+  private railViewAt = 0;
+  /** Where the view was when the route was last laid onto the rails. */
+  private matchedKey = '';
+  private matchedAt = 0;
   private theme: 'light' | 'dark' | null = null;
   private pathFor: string | null = null;
   private geo: JourneyGeo | null = null;
@@ -215,8 +241,13 @@ export class MapView {
       // when you switch tab, and the animation loop stops itself for the same
       // reason — this would otherwise keep working, and keep taking the view
       // back to a train nobody is looking at.
-      if (this.animating || !this.drawn) return;
       if (!document.getElementById('mpanel-carte')?.classList.contains('active')) return;
+      // Idle means the tiles are in, which is the whole condition for being
+      // able to match the route at all. It is also the only moment a map the
+      // reader has panned by hand ever gets, so this runs before the guard
+      // below: a still map has no animation loop to do it instead.
+      this.matchRoute();
+      if (this.animating || !this.drawn) return;
       this.settle(this.drawn);
     });
     await new Promise<void>((r) => this.map!.on('load', () => r()));
@@ -533,11 +564,43 @@ export class MapView {
       if (src) src.setData(this.geo);
       else {
         this.map.addSource('follow', { type: 'geojson', data: this.geo });
+        this.map.addSource('follow-real', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
         // Inserted under the train, not appended: these layers are created on
         // the first train shown, long after the body layers exist at startup,
         // so left to the default order the route line would be drawn over the
         // train.
         const underTrain = this.map.getLayer('train-cars') ? 'train-cars' : undefined;
+
+        // The route as it is really laid: the schematic centreline resampled
+        // and put onto the surveyed track — see core/RailMatch.
+        //
+        // Under the ballast rather than over it, so it reads as a highlight
+        // along the track the train uses: the bed, sleepers and rails are
+        // drawn on top, and this shows as a coloured edge either side of them.
+        // Drawn over, it would hide the very track it is pointing at.
+        this.map.addLayer(
+          {
+            id: 'follow-real',
+            type: 'line',
+            source: 'follow-real',
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: {
+              'line-color': Theme.token('accent'),
+              // Wider than the track bed at every zoom by about its own width
+              // again, which is what leaves an edge showing either side.
+              'line-width': ['interpolate', ['linear'], ['zoom'], 14, 3, 16, 7, 19, 18],
+              // The mirror of the schematic line's fade below: as the
+              // centreline gives up, this takes over. Between the two the
+              // route is drawn at every zoom, and only the accurate one
+              // survives close in, where the difference can be seen.
+              'line-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 0.5, 16, 0.85],
+            },
+          },
+          this.map.getLayer('osm-track-bed') ? 'osm-track-bed' : underTrain,
+        );
         this.map.addLayer(
           {
             id: 'follow-path',
@@ -577,6 +640,9 @@ export class MapView {
         );
       }
       this.pathFor = t.number;
+      // The matched line belongs to the route that has just been replaced.
+      this.matchedKey = '';
+      this.map.getSource('follow-real')?.setData({ type: 'FeatureCollection', features: [] });
       this.reckoner.reset();
       const line = this.geo.features.find((f) => f.geometry.type === 'LineString');
       this.track = line
@@ -717,6 +783,9 @@ export class MapView {
             const at = this.onSurveyedTrack(here.lon, here.lat, here.bearing, p.limitKmh);
             this.marker.setLngLat(at);
             this.centreOnTrain(at);
+            // After the recentre, so the stretch matched is the one that will
+            // be on screen. Throttled inside, and a no-op until the view moves.
+            this.matchRoute();
 
             // The pointer only turns when the train does, which on a straight
             // line is hardly ever. Writing the same transform every frame
@@ -893,6 +962,9 @@ export class MapView {
     this.marker.setLngLat(at);
     this.centreOnTrain(at);
     this.drawBody(t, this.drawnKm);
+    // The train has just been snapped, so snappedTo now names the track it is
+    // on — which is what seeds the route through a station onto the same one.
+    this.matchRoute();
   }
 
   /**
@@ -997,6 +1069,128 @@ export class MapView {
       this.railSegs = [];
     }
     return this.railSegs;
+  }
+
+  /**
+   * Every surveyed track in view, whole, for matching the route onto.
+   *
+   * Deliberately not the box that nearbyTrack builds: that one keeps only the
+   * run of each line passing within 700 m of the train, which is right for
+   * deciding what the train is standing on and useless for drawing a route
+   * across the screen. Whole lines also mean the bounding boxes in RailMatch
+   * are worth having.
+   */
+  private viewportRails(): Line[] {
+    const now = performance.now();
+    // The tiles do not change under a still map, and this is only ever called
+    // from a path that already has its own reason not to run continuously.
+    if (now - this.railViewAt < 2000) return this.railView;
+    this.railViewAt = now;
+
+    const lines: Line[] = [];
+    const take = (key: string, pts: readonly Point[]): void => {
+      if (pts.length > 1) lines.push({ key, points: pts });
+    };
+    try {
+      const feats = this.map?.querySourceFeatures('osmrail', { sourceLayer: 'tracks' }) ?? [];
+      for (const f of feats) {
+        const g = f.geometry;
+        const ref = String(f.properties?.['railway:track_ref'] ?? '');
+        if (g.type === 'LineString') {
+          const pts = g.coordinates as Point[];
+          take(String(f.id ?? `${ref}@${pts[0]?.[0].toFixed(4)},${pts[0]?.[1].toFixed(4)}`), pts);
+        } else if (g.type === 'MultiLineString') {
+          for (const [n, l] of (g.coordinates as Point[][]).entries()) {
+            take(String(f.id ?? `${ref}@${l[0]?.[0].toFixed(4)},${l[0]?.[1].toFixed(4)}#${n}`), l);
+          }
+        }
+      }
+      this.railView = lines;
+    } catch {
+      // The source may not be loaded yet; the schematic line stands until it
+      // is, and the next call will find it.
+      this.railView = [];
+    }
+    return this.railView;
+  }
+
+  /**
+   * Lay the visible part of the route onto the track the tiles show.
+   *
+   * Only the visible part: the tiles hold what is on screen, so that is all
+   * there is to match against, and a thousand-kilometre journey would be a
+   * pointless thing to walk for a view a few hundred metres across.
+   *
+   * Cheap to call — it does nothing unless the view has actually moved — so
+   * both the animation loop and the idle handler can just call it.
+   */
+  private matchRoute(): void {
+    if (!this.map) return;
+    const src = this.map.getSource('follow-real');
+    if (!src) return;
+    const clear = (): void => {
+      if (this.matchedKey === '') return;
+      this.matchedKey = '';
+      src.setData({ type: 'FeatureCollection', features: [] });
+    };
+
+    const zoom = this.map.getZoom();
+    // Below this the schematic line is fully opaque and doing the job, the
+    // matched one is transparent, and a railway is one stroke wide anyway.
+    if (zoom < MATCH_MIN_ZOOM || !this.track) {
+      clear();
+      return;
+    }
+
+    const c = this.map.getCenter();
+    // Four decimal places is about eleven metres, which is under the width of
+    // the line being drawn; below that there is nothing to see for the work.
+    const key = `${this.pathFor}@${c.lng.toFixed(4)},${c.lat.toFixed(4)}/${zoom.toFixed(1)}`;
+    const now = performance.now();
+    if (key === this.matchedKey || now - this.matchedAt < MATCH_MS) return;
+    this.matchedKey = key;
+    this.matchedAt = now;
+
+    // How much route could be on screen: half the diagonal of the viewport,
+    // and a third again so the drawn line reaches past the edge rather than
+    // stopping short of it.
+    const el = this.map.getContainer();
+    const mPerPx = metresPerPixel(c.lat, zoom);
+    const spanKm = (0.5 * Math.hypot(el.clientWidth, el.clientHeight) * mPerPx * 1.3) / 1000;
+    const mid = this.track.distanceAt(c.lat, c.lng);
+    const to = Math.min(this.track.length, mid + spanKm);
+
+    // Sampled at the finer of the fixed step and what a pixel is worth: there
+    // is nothing to gain from placing points closer together than the screen
+    // can separate them, and at low zoom that is most of the work.
+    const stepM = Math.max(SAMPLE_M, 4 * mPerPx);
+    const samples: Sample[] = [];
+    for (let km = Math.max(0, mid - spanKm); km <= to; km += stepM / 1000) {
+      const at = this.track.at(km);
+      if (at) samples.push({ lon: at.lon, lat: at.lat, bearing: at.bearing });
+    }
+
+    const runs = matchToRails(samples, this.viewportRails(), {
+      stepM,
+      // The same rule the train is placed by, so the route comes out on the
+      // track the train is drawn on rather than the one beside it. The line
+      // speed is left out because it varies along a journey and is only used
+      // to spot a high-speed line, which changes the answer nowhere except
+      // inside Alsace-Moselle.
+      keepLeft: (lon, lat) => keepsLeft(lon, lat),
+      // And through a station, start from the platform road the train itself
+      // was put on rather than whichever of six is nearest the first sample.
+      seed: this.snappedTo,
+    });
+
+    src.setData({
+      type: 'FeatureCollection',
+      features: runs.map((coordinates) => ({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'LineString', coordinates },
+      })),
+    });
   }
 
   /**
