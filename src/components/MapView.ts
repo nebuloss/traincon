@@ -1162,18 +1162,17 @@ export class MapView {
     const mid = this.track.distanceAt(c.lat, c.lng);
     const to = Math.min(this.track.length, mid + spanKm);
 
-    // Sampled at the finer of the fixed step and what a pixel is worth: there
-    // is nothing to gain from placing points closer together than the screen
-    // can separate them, and at low zoom that is most of the work.
-    const stepM = Math.max(SAMPLE_M, 4 * mPerPx);
+    // A fixed step rather than one scaled to the zoom: at z14, the lowest this
+    // runs at, a pixel is about three and a half metres, so any sensible
+    // multiple of it is finer than the fixed step anyway. The count is bounded
+    // by the viewport regardless — a few hundred samples at the widest.
     const samples: Sample[] = [];
-    for (let km = Math.max(0, mid - spanKm); km <= to; km += stepM / 1000) {
+    for (let km = Math.max(0, mid - spanKm); km <= to; km += SAMPLE_M / 1000) {
       const at = this.track.at(km);
       if (at) samples.push({ lon: at.lon, lat: at.lat, bearing: at.bearing });
     }
 
     const runs = matchToRails(samples, this.viewportRails(), {
-      stepM,
       // The same rule the train is placed by, so the route comes out on the
       // track the train is drawn on rather than the one beside it. The line
       // speed is left out because it varies along a journey and is only used
