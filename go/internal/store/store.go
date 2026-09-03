@@ -119,8 +119,6 @@ func (s *Store) Start(ctx context.Context) error {
 	if s.statics, err = gtfs.Load(ctx, s.dataDir); err != nil {
 		return err
 	}
-	// Coupling is what the timetable books, not what the live feed suggests.
-	s.coupling.Declare(s.statics)
 	if err := s.board.Load(); err != nil {
 		slog.Warn("board: could not be loaded", "err", err)
 	}
@@ -190,8 +188,6 @@ func (s *Store) Refresh(ctx context.Context) error {
 			s.mu.Lock()
 			s.statics = next
 			s.mu.Unlock()
-			// The declared sets belong to the tables that were just replaced.
-			s.coupling.Declare(next)
 		} // keep the old tables on failure
 	}
 
