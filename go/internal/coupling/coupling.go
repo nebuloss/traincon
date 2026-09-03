@@ -69,11 +69,24 @@ func newResult() *Result {
 	}
 }
 
+// Booked is the coupling the timetable declares: for a train number, the
+// numbers it is scheduled to run joined to. Supplied by the static schedule —
+// see gtfs.buildCoupled for what makes it certain.
+type Booked interface {
+	Joined(a, b string) bool
+}
+
 // Detector tracks how recently each number's delay was revised, across
 // refreshes, so the freshest member of a set can be identified.
 type Detector struct {
 	lastChange map[string]int64
+	booked     Booked
 }
+
+// Declare gives the detector the sets the timetable books, which is what it is
+// allowed to reconcile. Without it nothing is coupled: guessing from behaviour
+// alone is what paired trains that merely shared a terminus.
+func (d *Detector) Declare(b Booked) { d.booked = b }
 
 // New returns an empty Detector.
 func New() *Detector {
@@ -152,7 +165,12 @@ func (d *Detector) Detect(trains []*train.Train, now int64, g *rail.Graph, cache
 			prev := run[len(run)-1]
 			closeDelay := abs64(cur.delay-prev.delay) <= delayTol
 			sameSlot := abs64(cur.schedTerminus-prev.schedTerminus) <= schedTol
-			if closeDelay && sameSlot && cur.toward == prev.toward {
+			// The timetable decides whether these two can be one train at all;
+			// the live checks only decide whether they are joined right now.
+			// With every member, not just the last: three trains sharing a
+			// terminus used to chain into one set, and a unité multiple is two
+			// units, not three.
+			if closeDelay && sameSlot && cur.toward == prev.toward && d.bookedWithAll(cur, run) {
 				run = append(run, cur)
 				continue
 			}
@@ -162,6 +180,26 @@ func (d *Detector) Detect(trains []*train.Train, now int64, g *rail.Graph, cache
 		d.reconcile(run, now, g, cache, out)
 	}
 	return out
+}
+
+// bookedWithAll reports whether the timetable books this train to run joined to
+// every member of the run so far.
+//
+// Nothing is coupled without it. Inferring a set from behaviour alone — same
+// terminus, same booked minute, same next stop — paired Intercités de Nuit 5772
+// from Nice with 5792 from Briançon two hours before they meet, and reconcile
+// gives every member of a set one position, so it would have drawn one of them
+// a hundred kilometres from where it was.
+func (d *Detector) bookedWithAll(cur member, run []member) bool {
+	if d.booked == nil {
+		return false
+	}
+	for _, m := range run {
+		if !d.booked.Joined(cur.train.Number, m.train.Number) {
+			return false
+		}
+	}
+	return true
 }
 
 // reconcile settles one coupled set on a single position, delay and timetable.

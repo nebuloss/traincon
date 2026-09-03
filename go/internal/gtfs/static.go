@@ -68,7 +68,32 @@ type Static struct {
 	Stops    map[string]Stop
 	Stations map[string]*Station
 	Trains   map[string]TrainMeta
+	// Coupled maps a train number to the numbers the timetable books it to run
+	// joined to. Read off the schedule rather than inferred from behaviour —
+	// see coupled.go for what makes it certain.
+	Coupled  map[string][]string
 	LoadedAt time.Time
+}
+
+// CoupledWith returns the numbers this train is booked to run joined to.
+func (s *Static) CoupledWith(number string) []string {
+	if s == nil {
+		return nil
+	}
+	return s.Coupled[number]
+}
+
+// Joined reports whether the timetable books these two as one physical train.
+func (s *Static) Joined(a, b string) bool {
+	if s == nil {
+		return false
+	}
+	for _, n := range s.Coupled[a] {
+		if n == b {
+			return true
+		}
+	}
+	return false
 }
 
 // Stale reports whether the tables have passed MaxAge and should be rebuilt.
@@ -170,7 +195,18 @@ func Load(ctx context.Context, dataDir string) (*Static, error) {
 		return nil, err
 	}
 
-	return &Static{Stops: stops, Stations: stations, Trains: trains, LoadedAt: time.Now()}, nil
+	// Which numbers the timetable books to run joined. Read here rather than
+	// inferred from the live feed, which had no way to tell a coupled set from
+	// two trains booked into one terminus at the same minute.
+	coupled, err := buildCoupled(&zr.Reader)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Static{
+		Stops: stops, Stations: stations, Trains: trains,
+		Coupled: coupled, LoadedAt: time.Now(),
+	}, nil
 }
 
 // ensureArchive returns the path to a current copy of the archive, downloading
