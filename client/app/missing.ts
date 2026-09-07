@@ -1,9 +1,10 @@
 /**
  * Reading a lookup that came back empty.
  *
- * Sits in core/ because it interprets the API contract rather than any one
- * screen: the bookmark list uses it to decide how to draw the card, and the
- * modal uses it to decide whether there is anything worth opening.
+ * Sits beside the API client rather than under a screen because it interprets
+ * the contract rather than any one view: the bookmark list uses it to decide
+ * how to draw the card, and the modal to decide whether there is anything
+ * worth opening.
  */
 
 import type { MissingReason, TrainNotFound } from '../types.ts';

@@ -38,7 +38,7 @@
  * the train is actually doing.
  *
  * Which side that is, is not the same everywhere: Alsace-Moselle runs on the
- * right. Deciding that is core/RunningSide's job, and the answer arrives here
+ * right. Deciding that is rail/running-side's job, and the answer arrives here
  * as `keepLeft`.
  *
  * The choice is made once for the whole train and then held, so noise in
@@ -151,7 +151,7 @@ export function snapToLine(lon: number, lat: number, line: Line): Snapped | null
  * `bearing` is where the train is heading, in degrees from north; pass null
  * when it is not known and the check is skipped. `prefer` is the key of the
  * track it is already on, which wins ties and near-ties. `keepLeft` is which
- * side this bit of railway runs on — see core/RunningSide.
+ * side this bit of railway runs on — see rail/running-side.
  */
 export function snapToTrack(
   lon: number,

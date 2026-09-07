@@ -128,13 +128,10 @@ test('nothing happens at all when not following', () => {
 
 test('the component has the same guards', async () => {
   // The stand-in above models the fix; this checks the real one still has it.
-  const { readFile } = await import('node:fs/promises');
-  const { fileURLToPath } = await import('node:url');
-  const path = await import('node:path');
-  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-  const src = await readFile(path.join(root, 'client/map/MapView.ts'), 'utf8');
+  const { view: src } = await import('./source.mjs');
 
-  const fn = src.slice(src.indexOf('private centreOnTrain('), src.indexOf('private nearbyTrack('));
+  const fn = src.slice(src.indexOf('private centreOnTrain('), src.indexOf('private matchRoute('));
+  assert.ok(fn.length > 0 && fn.length < 2000, 'the slice should be one method, not the file');
   assert.match(fn, /if \(this\.centring\) return;/, 're-entrancy guard');
   assert.match(fn, /this\.centring = true;/, 'and it is actually set');
   assert.match(fn, /finally \{\s*this\.centring = false;/, 'and cleared even if setCenter throws');

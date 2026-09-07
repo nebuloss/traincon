@@ -301,7 +301,7 @@ export type JourneyLine = Feature<
     legsWithGeometry: number;
     legs: number;
     /**
-     * One motion profile per leg, in call order — see core/motion.ts.
+     * One motion profile per leg, in call order — see rail/motion.ts.
      *
      * Lets the map compute positions with the same model the server uses,
      * rather than assuming constant speed between updates. Empty for a leg
@@ -323,7 +323,7 @@ export type VehicleRole = 'power' | 'artic' | 'loco' | 'coach' | 'emu-cab' | 'em
 
 /**
  * One placed vehicle: where it is, which way it faces, and which drawing to
- * use — see client/core/TrainBody and the artwork in client/assets/train.
+ * use — see client/train/train-body and the artwork in client/assets/train.
  */
 export type TrainCarsGeo = FeatureCollection<
   Feature<

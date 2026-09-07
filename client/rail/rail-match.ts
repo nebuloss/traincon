@@ -84,7 +84,7 @@ export interface Sample {
    * chord the sample sits on: where the route is drawn as a long straight
    * across a curve it is much further from the track than the usual limit
    * allows, and refusing the correction there breaks the line exactly where it
-   * is most visibly wrong. See core/TrackSnap.snapReach.
+   * is most visibly wrong. See rail/track-snap.snapReach.
    */
   reach?: number;
 }
@@ -94,7 +94,7 @@ export interface MatchOpts {
   stepM?: number;
   /** How far a sample may be moved onto the rails. */
   maxSnapM?: number;
-  /** Which side this railway runs on, at a point. See core/RunningSide. */
+  /** Which side this railway runs on, at a point. See rail/running-side. */
   keepLeft?: (lon: number, lat: number) => boolean;
   /**
    * The way the train itself was snapped to, so the route through a station

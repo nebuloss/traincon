@@ -23,8 +23,9 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+import { layers, view as src } from './source.mjs';
+
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const src = await readFile(path.join(ROOT, 'client/map/MapView.ts'), 'utf8');
 const art = await readFile(path.join(ROOT, 'client/train/train-art.ts'), 'utf8');
 
 const showBody = (() => {
@@ -43,7 +44,7 @@ test('the disc goes only when the body can actually replace it', () => {
 test('the threshold is the same one the layer carries', () => {
   // If the class and the layer's minzoom ever disagree, a band of zooms shows
   // both representations at once or neither.
-  const layer = src.slice(src.indexOf("id: 'train-cars'"));
+  const layer = layers.slice(layers.indexOf("id: 'train-cars'"));
   assert.match(layer.slice(0, 400), /minzoom: PLAN_ZOOM/, 'the layer uses PLAN_ZOOM');
 });
 

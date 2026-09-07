@@ -10,7 +10,7 @@
  *
  * This module owns the disc and the dimensions. The close-in drawing is map
  * geometry rather than an icon, because a train on a curve is not a rectangle;
- * it lives in core/TrainBody.
+ * it lives in train/train-body.
  */
 
 import type { Family, TrainDTO } from '../types.ts';
@@ -137,7 +137,7 @@ export function metresPerPixel(zoom: number, lat: number): number {
  *
  * The length follows from it, and so does the shape: a double TGV is two whole
  * sets attached, with four motrices, rather than one set stretched to twice
- * the length. See core/TrainBody.
+ * the length. See train/train-body.
  */
 export function unitsOf(t: TrainDTO): number {
   return 1 + (t.coupledWith?.length ?? 0);

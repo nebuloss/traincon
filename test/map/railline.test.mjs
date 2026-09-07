@@ -7,12 +7,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const src = await readFile(path.join(ROOT, 'client/map/MapView.ts'), 'utf8');
+import { layers, src as all, surveyed, view as src } from './source.mjs';
 
 test('metres per pixel is asked for zoom first, everywhere', () => {
   // Both arguments are numbers, so swapping them typechecks perfectly and
@@ -20,7 +16,11 @@ test('metres per pixel is asked for zoom first, everywhere', () => {
   // round here once already: the matched route collapsed to a stub at the
   // centre of the view, which looks like a matching failure rather than an
   // arithmetic one. There is nothing but this test to catch it.
-  const calls = [...src.matchAll(/metresPerPixel\(([^)]*)\)/g)].map((m) => m[1]);
+  //
+  // Read across the whole map rather than the view alone: one of the two calls
+  // sizes the vehicles and now sits with the layer it feeds, the other
+  // measures how much route could be on screen.
+  const calls = [...all.matchAll(/metresPerPixel\(([^)]*)\)/g)].map((m) => m[1]);
   assert.ok(calls.length >= 2, 'expected the framing and the matching calls');
   for (const args of calls) {
     assert.match(args, /^zoom\b/, `metresPerPixel(${args}) has its arguments the wrong way round`);
@@ -60,15 +60,15 @@ test('the matched line takes over exactly as the schematic gives up', () => {
   // Two lines for one route: the graph centreline far out, the surveyed track
   // close in. The ramps have to be mirror images or the route either doubles
   // or disappears somewhere in the middle.
-  const real = src.slice(src.indexOf("id: 'follow-real'"));
-  const realPaint = real.slice(0, real.indexOf('this.map.getLayer('));
+  const real = layers.slice(layers.indexOf("id: 'follow-real'"));
+  const realPaint = real.slice(0, real.indexOf('map.getLayer('));
   assert.match(
     realPaint,
     /'line-opacity': \['interpolate', \['linear'\], \['zoom'\], 14, 0, 15, 0\.5, 16, 0\.85\]/,
     'the matched line fades in from 14 to 16',
   );
 
-  const schematic = src.slice(src.indexOf("id: 'follow-path'"));
+  const schematic = layers.slice(layers.indexOf("id: 'follow-path'"));
   assert.match(
     schematic.slice(0, 1200),
     /'line-opacity': \['interpolate', \['linear'\], \['zoom'\], 14, 0\.9, 15, 0\.45, 16, 0\.15\]/,
@@ -114,11 +114,15 @@ test('a new train does not keep the rails of the last one', () => {
 });
 
 test('the whole view is gathered, not the box around the train', () => {
-  // nearbyTrack keeps only the run of each line passing within 700 m of the
-  // train, which is right for deciding what it is standing on and useless for
-  // drawing a route across the screen.
-  const fn = src.slice(src.indexOf('private viewportRails()'));
+  // near() keeps only the run of each line passing within 700 m of the train,
+  // which is right for deciding what it is standing on and useless for drawing
+  // a route across the screen. The two share the feature walk and differ only
+  // in what they keep, so what this checks is that they still differ.
+  const fn = surveyed.slice(surveyed.indexOf('inView(map'));
   const body = fn.slice(0, fn.indexOf('\n  }\n'));
-  assert.match(body, /querySourceFeatures\('osmrail', \{ sourceLayer: 'tracks' \}\)/);
   assert.doesNotMatch(body, /inBox/, 'no box filter — whole lines');
+  assert.match(body, /walkTracks\(map, take\)/, 'the same walk, kept differently');
+  const near = surveyed.slice(surveyed.indexOf('near(map'), surveyed.indexOf('inView(map'));
+  assert.match(near, /inBox/, 'and the near one does filter to a box');
+  assert.match(surveyed, /querySourceFeatures\('osmrail', \{ sourceLayer: 'tracks' \}\)/);
 });

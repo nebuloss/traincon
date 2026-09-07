@@ -5,74 +5,43 @@
  * if created in a hidden container. Zoom follows speed, because positional
  * uncertainty scales with it: the estimate comes from a timetable, so a
  * one-minute error is 1.7 km at 100 km/h but 5 km at 300.
+ *
+ * What it draws sits beside it: the sources and layers in layers.ts, the
+ * surveyed track it snaps onto in surveyed.ts, the speed and aspect written
+ * over it in readout.ts. What is left here is the part that has to remember
+ * something between frames — where the train was last drawn, which track it
+ * was put on, and the loop that advances it.
  */
 
 import { Format } from '../app/Format.ts';
-import { tr } from '../app/I18n.ts';
 import { Reckoner } from '../rail/Reckoner.ts';
 import { Track } from '../rail/Track.ts';
-import { aspectLamp } from '../signals/signal-aspect.ts';
 import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM, unitsOf } from '../train/train-icon.ts';
 import { trainCars } from '../train/train-body.ts';
 import { zoomForSpeed } from './framing.ts';
 import { MAX_SNAP_M, snapReach, snapToLine, snapToTrack } from '../rail/track-snap.ts';
-import type { Line, Point } from '../rail/track-snap.ts';
+import type { Line } from '../rail/track-snap.ts';
 import { keepsLeft } from '../rail/running-side.ts';
 import { SAMPLE_M, matchToRails } from '../rail/rail-match.ts';
 import type { Sample } from '../rail/rail-match.ts';
-import { ensureLivery, iconScale } from '../train/train-art.ts';
+import { ensureLivery } from '../train/train-art.ts';
 import { plausibleSpeed } from '../train/stock.ts';
 import { distanceFraction } from '../rail/motion.ts';
 import { Theme } from '../app/Theme.ts';
 import type { Api } from '../app/Api.ts';
-import type { JourneyGeo, JourneyLine, TrainCarsGeo, TrainDTO } from '../types.ts';
-
-/** MapLibre is loaded from a script tag; this is the surface we rely on. */
-interface MapLike {
-  on(ev: string, fn: () => void): void;
-  once(ev: string, fn: () => void): void;
-  addControl(c: unknown, pos?: string): void;
-  addSource(id: string, src: unknown): void;
-  addLayer(layer: unknown, before?: string): void;
-  setPaintProperty(layer: string, prop: string, value: unknown): void;
-  setLayoutProperty(layer: string, prop: string, value: unknown): void;
-  querySourceFeatures(
-    source: string,
-    opts: { sourceLayer: string },
-  ): Array<{
-    id?: string | number;
-    properties?: Record<string, unknown>;
-    geometry: { type: string; coordinates: unknown };
-  }>;
-  hasImage(id: string): boolean;
-  addImage(id: string, image: ImageData, options?: { pixelRatio?: number }): void;
-  getSource(id: string): { setData(d: unknown): void } | undefined;
-  getLayer(id: string): unknown;
-  removeLayer(id: string): void;
-  removeSource(id: string): void;
-  setStyle(url: string): void;
-  easeTo(o: unknown): void;
-  setCenter(c: [number, number]): void;
-  getCenter(): { lng: number; lat: number };
-  fitBounds(b: unknown, o: unknown): void;
-  getZoom(): number;
-  project(lngLat: [number, number]): { x: number; y: number };
-  isMoving(): boolean;
-  getContainer(): HTMLElement;
-  resize(): void;
-}
-interface MarkerLike {
-  setLngLat(c: [number, number]): MarkerLike;
-  addTo(m: MapLike): MarkerLike;
-  setRotation(d: number): void;
-  getElement(): HTMLElement;
-  remove(): void;
-}
-declare const maplibregl: {
-  Map: new (o: unknown) => MapLike;
-  Marker: new (o: unknown) => MarkerLike;
-  NavigationControl: new () => unknown;
-};
+import type { JourneyGeo, JourneyLine, TrainDTO } from '../types.ts';
+import { gl } from './maplibre.ts';
+import type { MapLike, MarkerLike } from './maplibre.ts';
+import {
+  EMPTY_BODY,
+  addFollowLayers,
+  addRailLayers,
+  addStationTracks,
+  addTrainBody,
+  iconSizeExpression,
+} from './layers.ts';
+import { SurveyedTrack } from './surveyed.ts';
+import { showAspect, showSpeed } from './readout.ts';
 
 export type MapMode = 'train' | 'route';
 
@@ -101,19 +70,6 @@ const MATCH_MS = 500;
  */
 const KEEP_BODY_ZOOM = PLAN_ZOOM - 1;
 
-/**
- * The far anchor of the icon-size expression: MapLibre's own maximum zoom.
- *
- * Two stops are enough to be exact rather than approximate. Base-2
- * interpolation between values an exact power of two apart reproduces the true
- * scale at every zoom between them, and the scale is exactly that: a vehicle
- * is a fixed length on the ground, so its size in pixels doubles per zoom.
- */
-const MAX_PLAN_ZOOM = 22;
-
-/** Nothing to draw — used to create and to clear the train-body source. */
-const EMPTY_BODY: TrainCarsGeo = { type: 'FeatureCollection', features: [] };
-
 export class MapView {
   private map: MapLike | null = null;
   private marker: MarkerLike | null = null;
@@ -137,16 +93,8 @@ export class MapView {
    * without gliding — while the easing and the transitions go.
    */
   private reduced = false;
-  /**
-   * Surveyed track near the train, as individual segments — see core/TrackSnap.
-   *
-   * Cut down to the train's neighbourhood rather than kept for the whole
-   * viewport. A view at this zoom holds a few thousand segments, and snapping
-   * every vehicle against all of them twelve times a second is most of a
-   * million distance tests per second for no benefit: a train cannot be near
-   * track that is a kilometre away.
-   */
-  private railSegs: Line[] = [];
+  /** The drawn track under the view, cached and cut to size — see surveyed.ts. */
+  private readonly surveyed = new SurveyedTrack();
   /**
    * The track the train is on, and the line itself.
    *
@@ -176,17 +124,6 @@ export class MapView {
   private drawnLivery: string | null = null;
   /** Whether the source actually holds vehicles at this moment. */
   private bodyDrawn = false;
-  /** Where and when that was gathered, so it is not re-queried per frame. */
-  private railSegsAt = 0;
-  private railSegsNear: Point | null = null;
-
-  /**
-   * Surveyed track across the whole view, as opposed to the box around the
-   * train that railSegs holds. Matching the route needs everything on screen;
-   * snapping the train needs only what is under it.
-   */
-  private railView: Line[] = [];
-  private railViewAt = 0;
   /** Where the view was when the route was last laid onto the rails. */
   private matchedKey = '';
   private matchedAt = 0;
@@ -207,7 +144,7 @@ export class MapView {
   private track: Track | null = null;
   /** Distance along `track` of each call, so a leg's extent is known. */
   private stopKm: number[] = [];
-  /** Motion profile per leg, from the server — see core/motion.ts. */
+  /** Motion profile per leg, from the server — see rail/motion.ts. */
   private legProfiles: number[][] = [];
   private readonly reckoner = new Reckoner();
   private animating = false;
@@ -223,7 +160,7 @@ export class MapView {
    * Zoom chosen from speed, so that the train can be seen to move.
    *
    * The rule, and why it is the apparent speed rather than the true one that
-   * decides, is in core/Framing.
+   * decides, is in map/framing.
    */
   static zoomForSpeed(kmh: number): number {
     return zoomForSpeed(kmh);
@@ -235,7 +172,7 @@ export class MapView {
       requestAnimationFrame(() => this.map?.resize());
       return;
     }
-    this.map = new maplibregl.Map({
+    this.map = new gl.Map({
       container: this.containerId,
       style: this.themeManager.mapStyle,
       center: [2.4, 46.6],
@@ -243,7 +180,7 @@ export class MapView {
       attributionControl: true,
     });
     this.theme = this.themeManager.isDark ? 'dark' : 'light';
-    this.map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    this.map.addControl(new gl.NavigationControl(), 'top-right');
     // Crossing the threshold swaps the disc for the body drawn on the ground,
     // and that is all a zoom can change. The vehicles' positions do not depend
     // on it — trainCars is not given one — and their size is an expression the
@@ -286,237 +223,26 @@ export class MapView {
       this.settle(this.drawn);
     });
     await new Promise<void>((r) => this.map!.on('load', () => r()));
-    this.addRailLayers();
-    this.addStationTracks();
-    this.addTrainBody();
+    this.buildLayers();
     requestAnimationFrame(() => this.map?.resize());
   }
 
   /**
-   * Individual tracks and platforms, from OpenStreetMap, at close zoom.
+   * The layers that exist before any train does.
    *
-   * The route the app draws is a centreline — one line for the whole railway,
-   * so a station's half-dozen platform roads collapse into a single stroke and
-   * two trains standing in it appear on top of each other. OSM maps each track
-   * separately where anyone has surveyed it, which in practice means the
-   * stations: measured at Paris Montparnasse, 119 ways with 5.2 m between the
-   * closest pair, which is real track spacing.
-   *
-   * Taken as tiles the map fetches itself rather than as a bulk download: only
-   * what is on screen is requested, which is both far less data and the polite
-   * way to use somebody else's tile server. Attribution is set on the source
-   * so MapLibre shows it.
-   *
-   * Only the layout is drawn. Which platform a train is standing at is not
-   * published — GTFS carries no platform field, and Navitia's stop_point is
-   * per mode with platform_code empty — so the train stays on its centreline
-   * rather than being placed on a track chosen by guesswork.
+   * Both callers need all three and in this order — the network under the
+   * station track layout, and the train's body over both — so they ask for
+   * the set rather than for the three separately. The route layers are not
+   * here: they need a route, so they go on at the first train shown, and are
+   * inserted beneath the layer this creates.
    */
-  private addStationTracks(): void {
-    if (!this.map || this.map.getSource('osmrail')) return;
-    try {
-      this.map.addSource('osmrail', {
-        type: 'vector',
-        // No .pbf: that form answers 301 to this one, so every tile paid for
-        // a redirect. Both hops send CORS, which is why it half-worked.
-        tiles: ['https://tiles.tchoo.net/osmrailways/{z}/{x}/{y}'],
-        minzoom: 12,
-        maxzoom: 14,
-        attribution:
-          '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a> · ' +
-          '<a href="https://carto.tchoo.net" target="_blank" rel="noopener">Carto Tchoo</a>',
-      });
-
-      // Platforms first, so the track is drawn over them the way it lies.
-      // They are polygons in these tiles, not edges: a fill, with its outline
-      // drawn separately so a narrow platform still reads at z15.
-      this.map.addLayer({
-        id: 'osm-platforms',
-        type: 'fill',
-        source: 'osmrail',
-        'source-layer': 'platforms',
-        minzoom: 15,
-        paint: {
-          'fill-color': Theme.token('muted'),
-          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.45],
-        },
-      });
-      this.map.addLayer({
-        id: 'osm-platform-edges',
-        type: 'line',
-        source: 'osmrail',
-        'source-layer': 'platforms',
-        minzoom: 15,
-        paint: {
-          'line-color': Theme.token('muted'),
-          'line-width': 1.2,
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.85],
-        },
-      });
-
-      // Track, drawn as track: a brown bed of sleepers with two steel rails
-      // running over it. Far out that collapses to a single brown line, which
-      // is all the width there is for; the sleepers and the rails appear once
-      // there are pixels to draw them in.
-      //
-      // Four layers over one source rather than one line in a compromise
-      // colour, because the compromise was the problem: a slate line at this
-      // zoom read as one more grey line on a grey basemap.
-      this.map.addLayer({
-        id: 'osm-track-bed',
-        type: 'line',
-        source: 'osmrail',
-        'source-layer': 'tracks',
-        minzoom: 12.5,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': Theme.token('tie'),
-          'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1, 16, 3, 19, 10],
-          // Faded in over a zoom level so it does not appear abruptly. The
-          // ramp used to end where the layer began, so the tracks were fully
-          // transparent at every zoom they were drawn at.
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 12.5, 0, 13.5, 0.9],
-        },
-      });
-
-      // The sleepers themselves: the bed again, dashed across. Dash lengths
-      // are multiples of the line width, so the ties keep their spacing as
-      // the track thickens.
-      this.map.addLayer({
-        id: 'osm-track-ties',
-        type: 'line',
-        source: 'osmrail',
-        'source-layer': 'tracks',
-        minzoom: 15.5,
-        paint: {
-          'line-color': Theme.token('tie-dark'),
-          // Wider than the ballast it sits on, because a sleeper is: 2.6 m of
-          // timber under a 1.435 m gauge, ends proud of the rails.
-          'line-width': ['interpolate', ['linear'], ['zoom'], 15.5, 3, 19, 13],
-          // Fewer sleepers than there really are, and each one far chunkier.
-          // At true size they are 26 cm of timber every 60 cm, which even at
-          // z19 is well under a pixel — drawn honestly they are invisible, so
-          // roughly every fourth one is drawn and given the room to read.
-          'line-dasharray': [0.5, 0.5],
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 15.5, 0, 16.5, 0.95],
-        },
-      });
-
-      // Two rails, offset either side of the centreline — which is what makes
-      // it read as track rather than as a brown line.
-      for (const side of [-1, 1] as const) {
-        this.map.addLayer({
-          id: `osm-track-rail-${side < 0 ? 'l' : 'r'}`,
-          type: 'line',
-          source: 'osmrail',
-          'source-layer': 'tracks',
-          minzoom: 16,
-          paint: {
-            'line-color': Theme.token('steel'),
-            'line-width': ['interpolate', ['linear'], ['zoom'], 16, 0.8, 19, 2.2],
-            // Half the 1.435 m gauge, in pixels, so the rails sit where they
-            // really do — well inside the ends of the sleepers.
-            'line-offset': ['interpolate', ['linear'], ['zoom'], 16, 0.9 * side, 19, 3.4 * side],
-            'line-opacity': ['interpolate', ['linear'], ['zoom'], 16, 0, 17, 0.95],
-          },
-        });
-      }
-
-      // Platform numbers, from OSM's ref. Which platform a train is at is not
-      // published by anyone — GTFS has no such field, Navitia's platform_code
-      // is empty, and Carto Tchoo's own endpoint for it is called
-      // guess_my_platform and returns a confidence percentage — so these label
-      // the ground rather than the train. Knowing where platform 3 is still
-      // helps when the departure board tells you to go there.
-      this.map.addLayer({
-        id: 'osm-platform-refs',
-        type: 'symbol',
-        source: 'osmrail',
-        'source-layer': 'platforms',
-        minzoom: 16,
-        filter: ['has', 'ref'],
-        layout: {
-          'text-field': ['get', 'ref'],
-          'text-size': 11,
-          'text-font': ['Noto Sans Regular'],
-          'text-allow-overlap': false,
-        },
-        paint: {
-          'text-color': Theme.token('fg'),
-          'text-halo-color': Theme.token('panel'),
-          'text-halo-width': 1.6,
-        },
-      });
-    } catch {
-      // A third-party tile server is a nicety, not a requirement.
-    }
+  private buildLayers(): void {
+    if (!this.map) return;
+    addRailLayers(this.map);
+    addStationTracks(this.map);
+    addTrainBody(this.map);
   }
 
-  /**
-   * The train drawn on the ground, once the zoom makes it worth drawing.
-   *
-   * One symbol per vehicle, from the artwork in assets/train, each rotated to
-   * its own heading — which is what lets the train bend round a curve. See
-   * core/TrainBody for the layout and core/TrainArt for the drawings.
-   *
-   * Overlap is forced on. Symbols are normally allowed to hide each other to
-   * keep labels readable, and a train is precisely a row of symbols touching
-   * end to end, so left to itself MapLibre would drop every other vehicle.
-   */
-  private addTrainBody(): void {
-    if (!this.map || this.map.getSource('train-body')) return;
-    this.map.addSource('train-body', { type: 'geojson', data: EMPTY_BODY });
-    this.map.addLayer({
-      id: 'train-cars',
-      type: 'symbol',
-      source: 'train-body',
-      minzoom: PLAN_ZOOM,
-      layout: {
-        'icon-image': ['get', 'icon'],
-        'icon-rotate': ['get', 'bearing'],
-        // Turn with the map, not with the screen: these are objects lying on
-        // the ground, not labels pinned to it.
-        'icon-rotation-alignment': 'map',
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-        'icon-padding': 0,
-        // Set from the zoom on every draw, so the train stays at true scale.
-        'icon-size': 0.1,
-      },
-    });
-  }
-
-  /** The in-service network, so a train sits visibly on its track. */
-  private addRailLayers(): void {
-    if (!this.map || this.map.getSource('rail')) return;
-    try {
-      this.map.addSource('rail', { type: 'geojson', data: '/api/rail.geojson' });
-      this.map.addLayer({
-        id: 'rail-classic',
-        type: 'line',
-        source: 'rail',
-        filter: ['!=', ['get', 'hs'], 1],
-        paint: {
-          'line-color': Theme.token('rail'),
-          'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.4, 8, 0.9, 12, 1.8],
-          'line-opacity': 0.6,
-        },
-      });
-      this.map.addLayer({
-        id: 'rail-hs',
-        type: 'line',
-        source: 'rail',
-        filter: ['==', ['get', 'hs'], 1],
-        paint: {
-          'line-color': Theme.token('rail-hs'),
-          'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.8, 8, 1.6, 12, 2.8],
-          'line-opacity': 0.85,
-        },
-      });
-    } catch (e) {
-      console.warn('rail layer unavailable', e);
-    }
-  }
 
   /**
    * Swap the basemap when the theme changes.
@@ -543,9 +269,7 @@ export class MapView {
     this.iconLat = null;
     this.map.setStyle(this.themeManager.mapStyle);
     this.map.once('styledata', () => {
-      this.addRailLayers();
-      this.addStationTracks();
-      this.addTrainBody();
+      this.buildLayers();
       onReady();
     });
   }
@@ -605,85 +329,7 @@ export class MapView {
 
     if (this.pathFor !== t.number) {
       this.geo = await this.api.journey(t.number);
-      const src = this.map.getSource('follow');
-      if (src) src.setData(this.geo);
-      else {
-        this.map.addSource('follow', { type: 'geojson', data: this.geo });
-        this.map.addSource('follow-real', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] },
-        });
-        // Inserted under the train, not appended: these layers are created on
-        // the first train shown, long after the body layers exist at startup,
-        // so left to the default order the route line would be drawn over the
-        // train.
-        const underTrain = this.map.getLayer('train-cars') ? 'train-cars' : undefined;
-
-        // The route as it is really laid: the schematic centreline resampled
-        // and put onto the surveyed track — see core/RailMatch.
-        //
-        // Under the ballast rather than over it, so it reads as a highlight
-        // along the track the train uses: the bed, sleepers and rails are
-        // drawn on top, and this shows as a coloured edge either side of them.
-        // Drawn over, it would hide the very track it is pointing at.
-        this.map.addLayer(
-          {
-            id: 'follow-real',
-            type: 'line',
-            source: 'follow-real',
-            layout: { 'line-cap': 'round', 'line-join': 'round' },
-            paint: {
-              'line-color': Theme.token('accent'),
-              // Wider than the track bed at every zoom by about its own width
-              // again, which is what leaves an edge showing either side.
-              'line-width': ['interpolate', ['linear'], ['zoom'], 14, 3, 16, 7, 19, 18],
-              // The mirror of the schematic line's fade below: as the
-              // centreline gives up, this takes over. Between the two the
-              // route is drawn at every zoom, and only the accurate one
-              // survives close in, where the difference can be seen.
-              'line-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 0.5, 16, 0.85],
-            },
-          },
-          this.map.getLayer('osm-track-bed') ? 'osm-track-bed' : underTrain,
-        );
-        this.map.addLayer(
-          {
-            id: 'follow-path',
-          type: 'line',
-          source: 'follow',
-            filter: ['==', ['geometry-type'], 'LineString'],
-            paint: {
-              'line-color': Theme.token('accent'),
-              // Thins and fades as the surveyed tracks come in: close up the
-              // real track layout is the better answer, and a fat centreline
-              // drawn across six platform roads is actively misleading. Kept
-              // faintly rather than dropped, so the route is still traceable.
-              // Gone by the time the drawn track and the train itself are
-              // there to look at. It is a schematic centreline: one stroke for
-              // the whole railway, so close in it lies across every platform
-              // road at once and disagrees with the track under it.
-              'line-width': ['interpolate', ['linear'], ['zoom'], 14, 3.5, 16, 1.2],
-              'line-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0.9, 15, 0.45, 16, 0.15],
-            },
-          },
-          underTrain,
-        );
-        this.map.addLayer(
-          {
-            id: 'follow-stops',
-            type: 'circle',
-            source: 'follow',
-            filter: ['==', ['geometry-type'], 'Point'],
-            paint: {
-              'circle-radius': ['case', ['==', ['get', 'terminus'], 1], 5.5, 4],
-              'circle-color': Theme.token('panel'),
-              'circle-stroke-color': Theme.token('accent'),
-              'circle-stroke-width': 1.5,
-            },
-          },
-          underTrain,
-        );
-      }
+      addFollowLayers(this.map, this.geo);
       this.pathFor = t.number;
       // The matched line belongs to the route that has just been replaced.
       this.matchedKey = '';
@@ -755,8 +401,8 @@ export class MapView {
     this.reduced =
       typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    this.showSpeed(kmh, p.limitKmh);
-    this.showAspect(t);
+    showSpeed(kmh, p.limitKmh);
+    showAspect(t);
     // Legs with no routed track are animated too, along the straight line the
     // map draws for them. That is the same interpolation the server already
     // uses for the position there, and the marker renders dashed to say so —
@@ -885,15 +531,6 @@ export class MapView {
     return null;
   }
 
-  /** The deduced signal aspect, beside the speed. */
-  private showAspect(t: TrainDTO): void {
-    const el = document.getElementById('mapAspect');
-    if (!el) return;
-    const lamp = aspectLamp(t);
-    el.innerHTML = lamp;
-    el.hidden = !lamp;
-  }
-
 
   /**
    * Give the marker the glyph for this train's type.
@@ -1011,16 +648,11 @@ export class MapView {
   }
 
   /**
-   * Size the vehicles from the zoom, once, rather than on every draw.
+   * Hand the layer a new icon-size expression, but only when it would differ.
    *
-   * icon-size used to be set imperatively whenever the zoom moved, and setting
-   * a layout property re-lays out every symbol in the layer. During a pinch
-   * that is a re-layout per frame, on top of a setData per frame rebuilding
-   * geometry that does not depend on the zoom at all — the churn the vehicles
-   * flickered under. As an expression the style scales them itself.
-   *
-   * Only the latitude has to be fed in, and only when the train has moved far
-   * enough north or south to matter.
+   * The expression itself is in layers.ts; what is here is the decision not to
+   * set it. Setting a layout property re-lays out every symbol in the layer,
+   * so doing it on every draw is the churn the vehicles used to flicker under.
    */
   private sizeIcons(lat: number): void {
     if (!this.map) return;
@@ -1028,16 +660,7 @@ export class MapView {
     // well under half a percent — far less than a pixel on a vehicle.
     if (this.iconLat !== null && Math.abs(lat - this.iconLat) < 0.25) return;
     this.iconLat = lat;
-    const at = (zoom: number): number => iconScale(metresPerPixel(zoom, lat));
-    this.map.setLayoutProperty('train-cars', 'icon-size', [
-      'interpolate',
-      ['exponential', 2],
-      ['zoom'],
-      PLAN_ZOOM,
-      at(PLAN_ZOOM),
-      MAX_PLAN_ZOOM,
-      at(MAX_PLAN_ZOOM),
-    ]);
+    this.map.setLayoutProperty('train-cars', 'icon-size', iconSizeExpression(lat));
   }
 
   /**
@@ -1108,125 +731,6 @@ export class MapView {
   }
 
   /**
-   * The drawn track near the train, gathered from the tiles already loaded.
-   *
-   * Querying the source walks every feature in view, so it is done a few times
-   * a minute rather than a few times a second — the surveyed track does not
-   * move, and the train covers little ground between refreshes.
-   */
-  private nearbyTrack(lon: number, lat: number): Line[] {
-    const now = performance.now();
-    const moved =
-      this.railSegsNear === null ||
-      Math.abs(lon - this.railSegsNear[0]) > 0.004 ||
-      Math.abs(lat - this.railSegsNear[1]) > 0.003;
-    if (!moved && now - this.railSegsAt < 4000) return this.railSegs;
-    this.railSegsAt = now;
-    this.railSegsNear = [lon, lat];
-
-    // A box about 700 m around the train: wide enough to hold any track it
-    // could plausibly be on, small enough that what is left is a handful of
-    // segments rather than the whole screen.
-    const dLat = 0.0063;
-    const dLon = dLat / Math.max(0.3, Math.cos((lat * Math.PI) / 180));
-
-    const lines: Line[] = [];
-    const inBox = (p: Point): boolean =>
-      Math.abs(p[0] - lon) < dLon && Math.abs(p[1] - lat) < dLat;
-
-    /**
-     * Keep the run of the line that passes near the train, with a point either
-     * side so the segments crossing the edge of the box are not lost.
-     *
-     * Kept as a line rather than loose segments because it needs an identity:
-     * the train stays on the track it is already on, and that is only
-     * meaningful if one frame's track can be recognised in the next.
-     */
-    const take = (key: string, pts: readonly Point[]): void => {
-      let from = -1;
-      let to = -1;
-      for (let i = 0; i < pts.length; i++) {
-        if (!inBox(pts[i]!)) continue;
-        if (from === -1) from = i;
-        to = i;
-      }
-      if (from === -1) return;
-      const run = pts.slice(Math.max(0, from - 1), Math.min(pts.length, to + 2));
-      if (run.length > 1) lines.push({ key, points: run });
-    };
-
-    try {
-      const feats = this.map?.querySourceFeatures('osmrail', { sourceLayer: 'tracks' }) ?? [];
-      for (const f of feats) {
-        const g = f.geometry;
-        // The same way is served once per tile, so the id ties the pieces of
-        // one track together across tile boundaries. Where there is none, the
-        // track number and a rounded coordinate stand in.
-        const ref = String(f.properties?.['railway:track_ref'] ?? '');
-        if (g.type === 'LineString') {
-          const pts = g.coordinates as Point[];
-          take(String(f.id ?? `${ref}@${pts[0]?.[0].toFixed(4)},${pts[0]?.[1].toFixed(4)}`), pts);
-        } else if (g.type === 'MultiLineString') {
-          for (const [n, l] of (g.coordinates as Point[][]).entries()) {
-            take(String(f.id ?? `${ref}@${l[0]?.[0].toFixed(4)},${l[0]?.[1].toFixed(4)}#${n}`), l);
-          }
-        }
-      }
-      this.railSegs = lines;
-    } catch {
-      // The layer may not be added, or the source not loaded yet. The train
-      // simply stays on the line the model put it on.
-      this.railSegs = [];
-    }
-    return this.railSegs;
-  }
-
-  /**
-   * Every surveyed track in view, whole, for matching the route onto.
-   *
-   * Deliberately not the box that nearbyTrack builds: that one keeps only the
-   * run of each line passing within 700 m of the train, which is right for
-   * deciding what the train is standing on and useless for drawing a route
-   * across the screen. Whole lines also mean the bounding boxes in RailMatch
-   * are worth having.
-   */
-  private viewportRails(): Line[] {
-    const now = performance.now();
-    // The tiles do not change under a still map, and this is only ever called
-    // from a path that already has its own reason not to run continuously.
-    // Zero means never gathered, which is not the same as gathered just now:
-    // on a page open less than two seconds the difference is the whole cache.
-    if (this.railViewAt && now - this.railViewAt < 2000) return this.railView;
-    this.railViewAt = now;
-
-    const lines: Line[] = [];
-    const take = (key: string, pts: readonly Point[]): void => {
-      if (pts.length > 1) lines.push({ key, points: pts });
-    };
-    try {
-      const feats = this.map?.querySourceFeatures('osmrail', { sourceLayer: 'tracks' }) ?? [];
-      for (const f of feats) {
-        const g = f.geometry;
-        const ref = String(f.properties?.['railway:track_ref'] ?? '');
-        if (g.type === 'LineString') {
-          const pts = g.coordinates as Point[];
-          take(String(f.id ?? `${ref}@${pts[0]?.[0].toFixed(4)},${pts[0]?.[1].toFixed(4)}`), pts);
-        } else if (g.type === 'MultiLineString') {
-          for (const [n, l] of (g.coordinates as Point[][]).entries()) {
-            take(String(f.id ?? `${ref}@${l[0]?.[0].toFixed(4)},${l[0]?.[1].toFixed(4)}#${n}`), l);
-          }
-        }
-      }
-      this.railView = lines;
-    } catch {
-      // The source may not be loaded yet; the schematic line stands until it
-      // is, and the next call will find it.
-      this.railView = [];
-    }
-    return this.railView;
-  }
-
-  /**
    * Lay the visible part of the route onto the track the tiles show.
    *
    * Only the visible part: the tiles hold what is on screen, so that is all
@@ -1287,7 +791,7 @@ export class MapView {
       }
     }
 
-    const runs = matchToRails(samples, this.viewportRails(), {
+    const runs = matchToRails(samples, this.surveyed.inView(this.map), {
       // The same rule the train is placed by, and given the same line speed,
       // so the route comes out on the track the train is drawn on rather than
       // the one beside it.
@@ -1345,7 +849,7 @@ export class MapView {
       lon,
       lat,
       bearing,
-      this.nearbyTrack(lon, lat),
+      this.surveyed.near(this.map, lon, lat),
       reachM,
       this.snappedTo,
       keepsLeft(lon, lat, limitKmh),
@@ -1356,7 +860,7 @@ export class MapView {
       return [lon, lat];
     }
     this.snappedTo = hit.key;
-    this.chosenLine = this.railSegs.find((l) => l.key === hit.key) ?? null;
+    this.chosenLine = this.surveyed.segments.find((l) => l.key === hit.key) ?? null;
     return [hit.lon, hit.lat];
   }
 
@@ -1364,34 +868,6 @@ export class MapView {
     if (this.raf !== null) cancelAnimationFrame(this.raf);
     this.raf = null;
     this.animating = false;
-  }
-
-  /**
-   * Current speed, and what the line permits here.
-   *
-   * The limit is a property of the track rather than of the train, so it is
-   * drawn as the roundel it is on the ground rather than as more text — and
-   * hidden entirely where the geometry cannot say, rather than guessed at.
-   */
-  private showSpeed(kmh: number, limitKmh: number | null | undefined): void {
-    const speed = document.getElementById('mapSpeed');
-    if (speed) {
-      speed.textContent = kmh ? tr('map.speed', { kmh: String(Math.round(kmh)) }) : tr('map.stopped');
-      speed.classList.toggle('is-stopped', !kmh);
-    }
-
-    const limit = document.getElementById('mapLimit');
-    if (!limit) return;
-    if (limitKmh == null || limitKmh <= 0) {
-      limit.hidden = true;
-      return;
-    }
-    limit.hidden = false;
-    limit.textContent = String(Math.round(limitKmh));
-    limit.title = tr('map.limit', { kmh: String(Math.round(limitKmh)) });
-    // Marked when the train is at or near what the line allows, which is the
-    // interesting case: it is going as fast as it is permitted to.
-    limit.classList.toggle('at-limit', kmh >= limitKmh * 0.95);
   }
 
   private drawMarker(t: TrainDTO): void {
@@ -1409,7 +885,7 @@ export class MapView {
     // costs nothing and makes the two agree exactly.
     const onLine = this.track ? this.track.at(this.track.distanceAt(p.lat, p.lon)) : null;
     // And then sideways onto the rails that are drawn there, where the two
-    // surveys disagree — see core/TrackSnap.
+    // surveys disagree — see rail/track-snap.
     const [lon, lat] = this.onSurveyedTrack(
       onLine?.lon ?? p.lon,
       onLine?.lat ?? p.lat,
@@ -1429,7 +905,7 @@ export class MapView {
       el.innerHTML = '<i class="tm-dir"></i>';
       // A fresh element holds none of what shapeMarker last drew.
       this.markerForm = null;
-      this.marker = new maplibregl.Marker({
+      this.marker = new gl.Marker({
         element: el,
         // Explicit: the disc must sit on the coordinate, centred on the track.
         anchor: 'center',

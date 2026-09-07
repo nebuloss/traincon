@@ -13,8 +13,9 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+import { layers, src, surveyed, view } from './source.mjs';
+
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const src = await readFile(path.join(ROOT, 'client/map/MapView.ts'), 'utf8');
 const css = await readFile(path.join(ROOT, 'client/style.css'), 'utf8');
 
 /** The layer ids in the order addLayer is called with them. */
@@ -61,29 +62,38 @@ test('the matched route goes under the ballast, not over it', () => {
   const upToNext = block.slice(0, block.indexOf("id: 'follow-path'"));
   assert.match(
     upToNext,
-    /this\.map\.getLayer\('osm-track-bed'\) \? 'osm-track-bed' : underTrain,/,
+    /map\.getLayer\('osm-track-bed'\) \? 'osm-track-bed' : underTrain,/,
     'inserted before the track bed, falling back to the train',
   );
 
   // The rail layers are built during init and the route layers on first show,
   // so the target is there by the time the beforeId names it — the fallback is
   // for a style still loading, not for the ordinary case.
+  //
+  // Both now go on through named calls rather than inline, so the order that
+  // matters is the order of the calls: buildLayers runs from ensure(), and
+  // addFollowLayers only once there is a train to draw a route for.
   assert.ok(
-    src.indexOf('addRailLayers()') < src.indexOf("id: 'follow-real'"),
+    view.indexOf('this.buildLayers();') < view.indexOf('addFollowLayers('),
     'the tracks must be set up before a train is shown',
   );
+  assert.match(layers, /export function addRailLayers\(/, 'and it is the rail layers that do it');
 });
 
 test('the insertion point is the train body, and it exists by then', () => {
   assert.match(
     src,
-    /const underTrain = this\.map\.getLayer\('train-cars'\)\s*\?\s*'train-cars'\s*:\s*undefined;/,
+    /const underTrain = map\.getLayer\('train-cars'\)\s*\?\s*'train-cars'\s*:\s*undefined;/,
     'the beforeId should name the body layer and tolerate its absence',
   );
   // The body layers are created during init, the route layers on first show,
   // so by the time the beforeId is needed the target is there.
   assert.ok(
-    src.indexOf('addTrainBody()') < src.indexOf("id: 'follow-path'"),
+    layers.indexOf('export function addTrainBody(') < layers.indexOf("id: 'follow-path'"),
+    'the body must be defined before the route layers that name it',
+  );
+  assert.ok(
+    view.indexOf('this.buildLayers();') < view.indexOf('addFollowLayers('),
     'the body must be set up before a train is shown',
   );
 });
@@ -201,13 +211,21 @@ test('a style swap puts back everything the first load added', () => {
   // setStyle drops every custom source and layer. Rebuilding only some of them
   // left the map without station tracks or a train body after a theme change,
   // and the symptom was a stale marker rather than an error.
-  const init = src.slice(src.indexOf('await new Promise'), src.indexOf('private addStationTracks'));
-  const restyle = src.slice(src.indexOf('restyle(onReady'), src.indexOf('private frame('));
-  const adders = [...init.matchAll(/this\.(add\w+)\(\)/g)].map((m) => m[1]);
-  assert.ok(adders.length >= 3, 'expected several setup calls on load');
-  for (const fn of adders) {
-    assert.ok(restyle.includes(`this.${fn}()`), `restyle() never calls ${fn}()`);
+  //
+  // The two used to be separate lists of calls, which is exactly how they came
+  // to disagree. They are one named method now, so what this checks is that
+  // both paths still go through it — and that it really does add all three.
+  const build = view.slice(view.indexOf('private buildLayers()'));
+  const body = build.slice(0, build.indexOf('\n  }\n'));
+  for (const fn of ['addRailLayers', 'addStationTracks', 'addTrainBody']) {
+    assert.ok(body.includes(`${fn}(this.map)`), `buildLayers() never calls ${fn}()`);
   }
+
+  const init = view.slice(view.indexOf('await new Promise'), view.indexOf('private buildLayers()'));
+  assert.ok(init.includes('this.buildLayers();'), 'the first load must build them');
+
+  const restyle = view.slice(view.indexOf('restyle(onReady'), view.indexOf('private frame('));
+  assert.ok(restyle.includes('this.buildLayers();'), 'and a style swap must build them again');
 });
 
 test('the marker is hidden by something MapLibre will not overwrite', () => {
@@ -293,16 +311,16 @@ test('snapping is bounded, so it can run in the animation loop', () => {
   // vehicle against all of them twelve times a second would be most of a
   // million distance tests per second. The candidates are cut to a box around
   // the train when the cache is built.
-  const fn = src.slice(src.indexOf('private nearbyTrack('), src.indexOf('private onSurveyedTrack('));
-  assert.match(fn, /railSegsAt/, 'cached over time');
-  assert.match(fn, /Math\.abs\(lon - this\.railSegsNear\[0\]\)/, 'and rebuilt when the train moves on');
+  const fn = surveyed.slice(surveyed.indexOf('near(map'), surveyed.indexOf('inView(map'));
+  assert.match(fn, /now - this\.segsAt < NEAR_MS/, 'cached over time');
+  assert.match(fn, /Math\.abs\(lon - this\.segsNear\[0\]\)/, 'and rebuilt when the train moves on');
   assert.match(fn, /Math\.abs\(p\[0\] - lon\) < dLon/, 'filtered to a box around the train');
   // Gathered where the track is chosen — once, at the front of the train —
   // and not again while the vehicles behind it are placed.
-  const choose = src.slice(src.indexOf('private onSurveyedTrack('), src.indexOf('private stopAnimation('));
-  assert.equal([...choose.matchAll(/nearbyTrack\(/g)].length, 1, 'one gather per choice');
-  const body = src.slice(src.indexOf('const cars = trainCars('), src.indexOf('src.setData(cars)'));
-  assert.equal([...body.matchAll(/nearbyTrack\(/g)].length, 0, 'none while drawing the vehicles');
+  const choose = view.slice(view.indexOf('private onSurveyedTrack('), view.indexOf('private stopAnimation('));
+  assert.equal([...choose.matchAll(/surveyed\.near\(/g)].length, 1, 'one gather per choice');
+  const body = view.slice(view.indexOf('const cars = trainCars('), view.indexOf('src.setData(cars)'));
+  assert.equal([...body.matchAll(/surveyed\.near\(/g)].length, 0, 'none while drawing the vehicles');
 });
 
 
@@ -351,10 +369,11 @@ test('the work done per frame is bounded, because phones run this too', () => {
   // The expensive thing here is walking the tile features to find track to
   // snap to. It is cached, cut to a box around the train, and not done at all
   // until the rails are drawn thickly enough for the correction to show.
-  const fn = src.slice(src.indexOf('private onSurveyedTrack('), src.indexOf('private stopAnimation('));
+  const fn = view.slice(view.indexOf('private onSurveyedTrack('), view.indexOf('private stopAnimation('));
   assert.match(fn, /if \(zoom < 14\) \{/, 'skipped until it would be visible');
-  const gather = src.slice(src.indexOf('private nearbyTrack('), src.indexOf('private onSurveyedTrack('));
-  assert.match(gather, /now - this\.railSegsAt < 4000/, 'and cached between gathers');
+  const gather = surveyed.slice(surveyed.indexOf('near(map'), surveyed.indexOf('inView(map'));
+  assert.match(gather, /now - this\.segsAt < NEAR_MS/, 'and cached between gathers');
+  assert.match(surveyed, /const NEAR_MS = 4000;/, 'a few times a minute, not a few times a second');
   // The track is chosen once for the train, not once per vehicle.
   const body = src.slice(src.indexOf('const cars = trainCars('), src.indexOf('src.setData(cars)'));
   assert.ok(!/nearbyTrack\(/.test(body), 'and not re-gathered while drawing the vehicles');
@@ -394,10 +413,12 @@ test('style and layout are only touched when something moved', () => {
   // The vehicles' size is an expression the style evaluates, so it is written
   // once and only rewritten when the latitude it was built for has moved —
   // not per zoom, and certainly not per frame.
-  const size = src.slice(src.indexOf('private sizeIcons('));
+  const size = view.slice(view.indexOf('private sizeIcons('));
   const sizeBody = size.slice(0, size.indexOf('\n  }\n'));
   assert.match(sizeBody, /Math\.abs\(lat - this\.iconLat\) < 0\.25/, 'and only when the latitude moves');
-  assert.match(sizeBody, /\['exponential', 2\]/, 'base 2, which is exactly how the scale grows');
+  // The expression itself lives with the layer it is set on.
+  const expr = layers.slice(layers.indexOf('export function iconSizeExpression('));
+  assert.match(expr, /\['exponential', 2\]/, 'base 2, which is exactly how the scale grows');
 });
 
 test('a zoom rebuilds nothing', () => {
