@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const { Track } = await import(path.join(ROOT, 'client/rail/Track.ts'));
 
 /** A due-east line at latitude 48, in GeoJSON [lon, lat] order. */

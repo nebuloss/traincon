@@ -12,7 +12,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const { Track } = await import(path.join(ROOT, 'client/rail/Track.ts'));
 const { VEHICLE_M, consist, consistLength, trainCars } = await import(
   path.join(ROOT, 'client/train/train-body.ts')

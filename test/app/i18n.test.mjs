@@ -10,13 +10,13 @@ import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CLIENT = path.join(ROOT, 'src');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const CLIENT = path.join(ROOT, 'client');
 
-const src = await readFile(path.join(CLIENT, 'core/I18n.ts'), 'utf8');
+const src = await readFile(path.join(CLIENT, 'app/I18n.ts'), 'utf8');
 const html = await readFile(path.join(CLIENT, 'index.html'), 'utf8');
 
-/** Every .ts under src, concatenated — the interface source. */
+/** Every .ts under client/, concatenated — the interface source. */
 async function clientSources(dir = CLIENT) {
   const out = [];
   for (const e of await readdir(dir, { withFileTypes: true })) {

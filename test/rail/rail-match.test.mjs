@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const { SAMPLE_M, matchToRails } = await import(path.join(ROOT, 'client/rail/rail-match.ts'));
 
 const LAT = 47.28;

@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test 'test/**/*.test.mjs'",
     "onboard": "node scripts/onboard.mjs",
     "fetch:geo": "bash scripts/fetch-geo.sh",
     "server": "cd server && go run ./cmd/traincon",

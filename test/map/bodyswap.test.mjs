@@ -23,7 +23,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const src = await readFile(path.join(ROOT, 'client/map/MapView.ts'), 'utf8');
 const art = await readFile(path.join(ROOT, 'client/train/train-art.ts'), 'utf8');
 

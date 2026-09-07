@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const { MAX_BEARING_GAP, MAX_SNAP_FAR_M, MAX_SNAP_M, STICKY_M, headingGap, snapReach, snapToLine, snapToTrack } =
   await import(
   path.join(ROOT, 'client/rail/track-snap.ts')

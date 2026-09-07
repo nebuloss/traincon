@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const { PLAN_ZOOM, WIDTH_M, discView, familyColor, familyGlyph, metresPerPixel, trainLengthM } =
   await import(
   path.join(ROOT, 'client/train/train-icon.ts')

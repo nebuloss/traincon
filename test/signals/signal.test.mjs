@@ -22,7 +22,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const { signalKey } = await import(path.join(ROOT, 'client/signals/signal-art.ts'));
 
 const ART_DIR = path.join(ROOT, 'client/assets/signal');

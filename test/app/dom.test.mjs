@@ -14,10 +14,10 @@ import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CLIENT = path.join(ROOT, 'src');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const CLIENT = path.join(ROOT, 'client');
 
-/** Every .ts under src, with its path. */
+/** Every .ts under client/, with its path. */
 async function sources(dir = CLIENT) {
   const out = [];
   for (const e of await readdir(dir, { withFileTypes: true })) {

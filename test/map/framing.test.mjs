@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const { MAX_ZOOM, MIN_ZOOM, SCREEN_PX_PER_SEC, metresPerPixelAt, zoomForSpeed } = await import(
   path.join(ROOT, 'client/map/framing.ts')
 );
@@ -100,7 +100,7 @@ test('the scale matches MapLibre 512-pixel tiles, not the 256 scheme', () => {
 test('the map view uses this rule rather than one of its own', async () => {
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(path.join(ROOT, 'client/map/MapView.ts'), 'utf8');
-  assert.match(src, /from '\.\.\/core\/Framing\.ts'/, 'MapView should import it');
+  assert.match(src, /from '\.\/framing\.ts'/, 'MapView should import it');
   // And not carry a second copy that could drift from this one.
   assert.ok(!/13 - Math\.log2/.test(src), 'the old formula is still in MapView');
 });

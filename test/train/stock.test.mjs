@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const { STOCK_MAX_KMH, plausibleSpeed } = await import(path.join(ROOT, 'client/train/stock.ts'));
 
 test('a TER cannot do 266', () => {

@@ -131,7 +131,7 @@ test('the component has the same guards', async () => {
   const { readFile } = await import('node:fs/promises');
   const { fileURLToPath } = await import('node:url');
   const path = await import('node:path');
-  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   const src = await readFile(path.join(root, 'client/map/MapView.ts'), 'utf8');
 
   const fn = src.slice(src.indexOf('private centreOnTrain('), src.indexOf('private nearbyTrack('));

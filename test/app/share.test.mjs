@@ -15,7 +15,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const app = await readFile(path.join(ROOT, 'client/App.ts'), 'utf8');
 const modal = await readFile(path.join(ROOT, 'client/components/TrainModal.ts'), 'utf8');
 const i18n = await readFile(path.join(ROOT, 'client/app/I18n.ts'), 'utf8');
