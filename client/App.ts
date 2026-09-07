@@ -8,19 +8,19 @@
  * every interval checks visibility first, so nothing queues up while hidden.
  */
 
-import { Api } from './core/Api.ts';
-import { Bookmarks } from './core/Bookmarks.ts';
-import { Format } from './core/Format.ts';
-import { i18n, I18n, LOCALES, tr } from './core/I18n.ts';
-import { Prefs } from './core/Cache.ts';
-import { Router, type Route, type ViewName } from './core/Router.ts';
-import { Theme, type ThemeMode } from './core/Theme.ts';
+import { Api } from './app/Api.ts';
+import { Bookmarks } from './app/Bookmarks.ts';
+import { Format } from './app/Format.ts';
+import { i18n, I18n, LOCALES, tr } from './app/I18n.ts';
+import { Prefs } from './app/Cache.ts';
+import { Router, type Route, type ViewName } from './app/Router.ts';
+import { Theme, type ThemeMode } from './app/Theme.ts';
 import { Alerts, Banner, Toast } from './components/Banner.ts';
-import { MapView, type MapMode } from './components/MapView.ts';
+import { MapView, type MapMode } from './map/MapView.ts';
 import { TrainModal, type ModalTab } from './components/TrainModal.ts';
 import { SearchView } from './views/SearchView.ts';
 import { WorstView } from './views/WorstView.ts';
-import type { WorstFilter } from './core/WorstBoard.ts';
+import type { WorstFilter } from './views/worst-board.ts';
 import { WatchView } from './views/WatchView.ts';
 
 const REFRESH_MS = 30_000;

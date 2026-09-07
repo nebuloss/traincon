@@ -3,13 +3,13 @@
  * trains still on time" at a glance rather than one train at a time.
  */
 
-import { Format } from '../core/Format.ts';
-import { tr } from '../core/I18n.ts';
+import { Format } from '../app/Format.ts';
+import { tr } from '../app/I18n.ts';
 import { TrainCard, starButton } from '../components/TrainCard.ts';
 import type { Alerts } from '../components/Banner.ts';
-import type { Api } from '../core/Api.ts';
-import type { Bookmarks } from '../core/Bookmarks.ts';
-import { missingKind } from '../core/missing.ts';
+import type { Api } from '../app/Api.ts';
+import type { Bookmarks } from '../app/Bookmarks.ts';
+import { missingKind } from '../app/missing.ts';
 import type { TrainDTO, TrainNotFound } from '../types.ts';
 
 export class WatchView {

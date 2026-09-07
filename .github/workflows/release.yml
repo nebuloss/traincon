@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-          cache-dependency-path: go/go.sum
+          cache-dependency-path: server/go.sum
 
       # Static, so a target needs no Go toolchain and no shared libraries — and
       # CGO off is what makes it static, and what makes cross-compiling free:
@@ -42,7 +42,7 @@ jobs:
       # on. Nothing else: this needs OpenRC or systemd, so a macOS or Windows
       # build would serve nobody.
       - name: Build the Go server for every architecture
-        working-directory: go
+        working-directory: server
         env:
           CGO_ENABLED: '0'
         run: |

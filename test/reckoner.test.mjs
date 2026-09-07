@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { Reckoner } = await import(path.join(ROOT, 'src/core/Reckoner.ts'));
+const { Reckoner } = await import(path.join(ROOT, 'client/rail/Reckoner.ts'));
 
 /** One frame at the animation's real rate. */
 const FRAME = 80;

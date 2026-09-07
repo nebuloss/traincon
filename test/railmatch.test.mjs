@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { SAMPLE_M, matchToRails } = await import(path.join(ROOT, 'src/core/RailMatch.ts'));
+const { SAMPLE_M, matchToRails } = await import(path.join(ROOT, 'client/rail/rail-match.ts'));
 
 const LAT = 47.28;
 const LON = 1.38;

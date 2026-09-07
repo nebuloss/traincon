@@ -21,7 +21,7 @@ import path from 'node:path';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { MAX_BEARING_GAP, MAX_SNAP_FAR_M, MAX_SNAP_M, STICKY_M, headingGap, snapReach, snapToLine, snapToTrack } =
   await import(
-  path.join(ROOT, 'src/core/TrackSnap.ts')
+  path.join(ROOT, 'client/rail/track-snap.ts')
 );
 
 const LAT = 47.28;

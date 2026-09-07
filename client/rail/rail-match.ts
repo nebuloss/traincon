@@ -30,7 +30,7 @@ import {
   MAX_SNAP_M,
   headingGap,
   snapToLine,
-} from './TrackSnap.ts';
+} from './track-snap.ts';
 
 /**
  * How far apart to take samples along the route, in metres.

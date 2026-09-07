@@ -7,24 +7,24 @@
  * one-minute error is 1.7 km at 100 km/h but 5 km at 300.
  */
 
-import { Format } from '../core/Format.ts';
-import { tr } from '../core/I18n.ts';
-import { Reckoner } from '../core/Reckoner.ts';
-import { Track } from '../core/Track.ts';
-import { aspectLamp } from './SignalAspect.ts';
-import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM, unitsOf } from './TrainIcon.ts';
-import { trainCars } from '../core/TrainBody.ts';
-import { zoomForSpeed } from '../core/Framing.ts';
-import { MAX_SNAP_M, snapReach, snapToLine, snapToTrack } from '../core/TrackSnap.ts';
-import type { Line, Point } from '../core/TrackSnap.ts';
-import { keepsLeft } from '../core/RunningSide.ts';
-import { SAMPLE_M, matchToRails } from '../core/RailMatch.ts';
-import type { Sample } from '../core/RailMatch.ts';
-import { ensureLivery, iconScale } from '../core/TrainArt.ts';
-import { plausibleSpeed } from '../core/stock.ts';
-import { distanceFraction } from '../core/motion.ts';
-import { Theme } from '../core/Theme.ts';
-import type { Api } from '../core/Api.ts';
+import { Format } from '../app/Format.ts';
+import { tr } from '../app/I18n.ts';
+import { Reckoner } from '../rail/Reckoner.ts';
+import { Track } from '../rail/Track.ts';
+import { aspectLamp } from '../signals/signal-aspect.ts';
+import { PLAN_ZOOM, discView, liveryOf, metresPerPixel, trainLengthM, unitsOf } from '../train/train-icon.ts';
+import { trainCars } from '../train/train-body.ts';
+import { zoomForSpeed } from './framing.ts';
+import { MAX_SNAP_M, snapReach, snapToLine, snapToTrack } from '../rail/track-snap.ts';
+import type { Line, Point } from '../rail/track-snap.ts';
+import { keepsLeft } from '../rail/running-side.ts';
+import { SAMPLE_M, matchToRails } from '../rail/rail-match.ts';
+import type { Sample } from '../rail/rail-match.ts';
+import { ensureLivery, iconScale } from '../train/train-art.ts';
+import { plausibleSpeed } from '../train/stock.ts';
+import { distanceFraction } from '../rail/motion.ts';
+import { Theme } from '../app/Theme.ts';
+import type { Api } from '../app/Api.ts';
 import type { JourneyGeo, JourneyLine, TrainCarsGeo, TrainDTO } from '../types.ts';
 
 /** MapLibre is loaded from a script tag; this is the surface we rely on. */

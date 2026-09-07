@@ -16,10 +16,10 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const app = await readFile(path.join(ROOT, 'src/App.ts'), 'utf8');
-const modal = await readFile(path.join(ROOT, 'src/components/TrainModal.ts'), 'utf8');
-const i18n = await readFile(path.join(ROOT, 'src/core/I18n.ts'), 'utf8');
-const css = await readFile(path.join(ROOT, 'src/style.css'), 'utf8');
+const app = await readFile(path.join(ROOT, 'client/App.ts'), 'utf8');
+const modal = await readFile(path.join(ROOT, 'client/components/TrainModal.ts'), 'utf8');
+const i18n = await readFile(path.join(ROOT, 'client/app/I18n.ts'), 'utf8');
+const css = await readFile(path.join(ROOT, 'client/style.css'), 'utf8');
 
 test('the modal offers it, beside the favourite button', () => {
   assert.match(modal, /data-act="share"/, 'a share action');

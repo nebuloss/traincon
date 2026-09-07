@@ -6,14 +6,14 @@
  * stopped the overview turning into a wall of diagnostics.
  */
 
-import { Format, statusSentence } from '../core/Format.ts';
-import { tr } from '../core/I18n.ts';
+import { Format, statusSentence } from '../app/Format.ts';
+import { tr } from '../app/I18n.ts';
 import { Timeline } from './Timeline.ts';
-import { aspectBlock } from './SignalAspect.ts';
+import { aspectBlock } from '../signals/signal-aspect.ts';
 import { starButton } from './TrainCard.ts';
-import { MapView, type MapMode } from './MapView.ts';
-import { missingKind } from '../core/missing.ts';
-import type { Api } from '../core/Api.ts';
+import { MapView, type MapMode } from '../map/MapView.ts';
+import { missingKind } from '../app/missing.ts';
+import type { Api } from '../app/Api.ts';
 import type { Confidence, MissingReason, TrainDTO } from '../types.ts';
 
 export type ModalTab = 'apercu' | 'trajet' | 'carte' | 'journal';

@@ -43,10 +43,10 @@ import vlArt from '../assets/signal/vl.svg?raw';
 import aArt from '../assets/signal/a.svg?raw';
 import semaphoreArt from '../assets/signal/semaphore.svg?raw';
 import carreArt from '../assets/signal/carre.svg?raw';
-import { Format } from '../core/Format.ts';
-import { tr } from '../core/I18n.ts';
-import { signalKey } from '../core/SignalArt.ts';
-import type { SignalKey } from '../core/SignalArt.ts';
+import { Format } from '../app/Format.ts';
+import { tr } from '../app/I18n.ts';
+import { signalKey } from './signal-art.ts';
+import type { SignalKey } from './signal-art.ts';
 import type { TrainDTO } from '../types.ts';
 
 type Aspect = NonNullable<TrainDTO['traffic']>['aspect'];

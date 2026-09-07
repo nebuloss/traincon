@@ -12,7 +12,7 @@ data/geo/*
 !data/geo/signals.json.gz
 !data/geo/README.md
 dist/
-go/traincon
+server/traincon
 traincon-linux-amd64
 .env
 .env.local

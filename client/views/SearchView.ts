@@ -7,11 +7,11 @@
  * nothing.
  */
 
-import { Format } from '../core/Format.ts';
-import { tr } from '../core/I18n.ts';
-import { trainRow } from '../components/TrainRow.ts';
-import type { Api } from '../core/Api.ts';
-import type { Bookmarks } from '../core/Bookmarks.ts';
+import { Format } from '../app/Format.ts';
+import { tr } from '../app/I18n.ts';
+import { trainRow } from '../components/train-row.ts';
+import type { Api } from '../app/Api.ts';
+import type { Bookmarks } from '../app/Bookmarks.ts';
 import type { SuggestionDTO } from '../types.ts';
 
 export class SearchView {

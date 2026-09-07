@@ -8,8 +8,8 @@
  * without labels, and with labels it stops being compact.
  */
 
-import { Format, statusSentence } from '../core/Format.ts';
-import { tr } from '../core/I18n.ts';
+import { Format, statusSentence } from '../app/Format.ts';
+import { tr } from '../app/I18n.ts';
 import type { TrainDTO } from '../types.ts';
 
 /** The star, which may carry several numbers for a coupled set. */

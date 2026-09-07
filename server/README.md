@@ -59,7 +59,7 @@ node's edges are a contiguous range of three flat arrays.
 
 Everything runs on dev-build; nothing is built on dev-code.
 
-    cd go
+    cd server
     gofmt -l .        # must print nothing
     go vet ./...
     go test ./...

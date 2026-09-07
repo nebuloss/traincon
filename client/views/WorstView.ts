@@ -15,14 +15,14 @@
  * Hence the filter — the whole day, or only the trains still running.
  */
 
-import { Format } from '../core/Format.ts';
-import { tr } from '../core/I18n.ts';
-import { trainRow } from '../components/TrainRow.ts';
-import type { Api } from '../core/Api.ts';
-import type { Bookmarks } from '../core/Bookmarks.ts';
-import { Prefs } from '../core/Cache.ts';
-import { POOL, pickShown } from '../core/WorstBoard.ts';
-import type { WorstFilter } from '../core/WorstBoard.ts';
+import { Format } from '../app/Format.ts';
+import { tr } from '../app/I18n.ts';
+import { trainRow } from '../components/train-row.ts';
+import type { Api } from '../app/Api.ts';
+import type { Bookmarks } from '../app/Bookmarks.ts';
+import { Prefs } from '../app/Cache.ts';
+import { POOL, pickShown } from './worst-board.ts';
+import type { WorstFilter } from './worst-board.ts';
 import type { WorstTrainDTO } from '../types.ts';
 
 export class WorstView {

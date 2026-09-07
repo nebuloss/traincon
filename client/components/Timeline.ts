@@ -11,10 +11,10 @@
  * which is what distinguishes "in the station" from "between two".
  */
 
-import { Format } from '../core/Format.ts';
-import { tr } from '../core/I18n.ts';
+import { Format } from '../app/Format.ts';
+import { tr } from '../app/I18n.ts';
 import type { Call, TrainDTO } from '../types.ts';
-import { familyColor, familyGlyph } from './TrainIcon.ts';
+import { familyColor, familyGlyph } from '../train/train-icon.ts';
 
 /** Keep in sync with --row-h in the stylesheet. */
 export const ROW_H = 46;

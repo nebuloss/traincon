@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const src = await readFile(path.join(ROOT, 'src/components/MapView.ts'), 'utf8');
+const src = await readFile(path.join(ROOT, 'client/map/MapView.ts'), 'utf8');
 
 test('the loop still declines to run for a train that is not moving', () => {
   // The premise of everything below. If this ever changes, the compensation

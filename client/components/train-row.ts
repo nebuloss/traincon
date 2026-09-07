@@ -13,8 +13,8 @@
  * read as the same family.
  */
 
-import { Format } from '../core/Format.ts';
-import { tr } from '../core/I18n.ts';
+import { Format } from '../app/Format.ts';
+import { tr } from '../app/I18n.ts';
 import { starButton } from './TrainCard.ts';
 import type { Family } from '../types.ts';
 

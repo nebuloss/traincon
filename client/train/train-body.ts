@@ -26,7 +26,7 @@
  * the artwork's own viewBox so the two cannot drift apart.
  */
 
-import { Track } from './Track.ts';
+import { Track } from '../rail/Track.ts';
 import type { Family, TrainCarsGeo, VehicleRole } from '../types.ts';
 
 /** Real length of each vehicle, metres. */

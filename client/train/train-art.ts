@@ -22,8 +22,8 @@ import loco from '../assets/train/loco.svg?raw';
 import coach from '../assets/train/coach.svg?raw';
 import emuCab from '../assets/train/emu-cab.svg?raw';
 import emuMid from '../assets/train/emu-mid.svg?raw';
-import { LIVERY } from '../components/TrainIcon.ts';
-import type { LiveryKey } from '../components/TrainIcon.ts';
+import { LIVERY } from './train-icon.ts';
+import type { LiveryKey } from './train-icon.ts';
 import type { VehicleRole } from '../types.ts';
 
 /** The drawing for each kind of vehicle. */

@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const src = await readFile(path.join(ROOT, 'src/components/MapView.ts'), 'utf8');
+const src = await readFile(path.join(ROOT, 'client/map/MapView.ts'), 'utf8');
 
 test('metres per pixel is asked for zoom first, everywhere', () => {
   // Both arguments are numbers, so swapping them typechecks perfectly and

@@ -6,8 +6,8 @@
  * cache, replayed fixture, frozen server snapshot, and nothing at all.
  */
 
-import { Format } from '../core/Format.ts';
-import { tr } from '../core/I18n.ts';
+import { Format } from '../app/Format.ts';
+import { tr } from '../app/I18n.ts';
 import type { StatsDTO } from '../types.ts';
 
 type Kind = 'down' | 'stale' | 'replay';

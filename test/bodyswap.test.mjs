@@ -24,8 +24,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const src = await readFile(path.join(ROOT, 'src/components/MapView.ts'), 'utf8');
-const art = await readFile(path.join(ROOT, 'src/core/TrainArt.ts'), 'utf8');
+const src = await readFile(path.join(ROOT, 'client/map/MapView.ts'), 'utf8');
+const art = await readFile(path.join(ROOT, 'client/train/train-art.ts'), 'utf8');
 
 const showBody = (() => {
   const fn = src.slice(src.indexOf('private showBody()'));

@@ -2,7 +2,6 @@
   "name": "traincon",
   "version": "3.2.2",
   "description": "Live tracking for French trains, built on SNCF open data",
-  "main": "index.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -10,8 +9,8 @@
     "test": "node --test test/*.test.mjs",
     "onboard": "node scripts/onboard.mjs",
     "fetch:geo": "bash scripts/fetch-geo.sh",
-    "server": "cd go && go run ./cmd/traincon",
-    "server:test": "cd go && gofmt -l . && go vet ./... && go test ./..."
+    "server": "cd server && go run ./cmd/traincon",
+    "server:test": "cd server && gofmt -l . && go vet ./... && go test ./..."
   },
   "keywords": [],
   "author": "",
