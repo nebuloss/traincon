@@ -153,7 +153,6 @@ export class SurveyedTrack {
     // Zero means never gathered, which is not the same as gathered just now:
     // on a page open less than two seconds the difference is the whole cache.
     if (this.viewAt && now - this.viewAt < VIEW_MS) return this.view;
-    this.viewAt = now;
 
     const lines: Line[] = [];
     const take = (key: string, pts: readonly Point[]): void => {
@@ -167,6 +166,12 @@ export class SurveyedTrack {
       // is, and the next call will find it.
       this.view = [];
     }
+    // The clock starts on an answer worth keeping. An empty one means the tiles
+    // are still in flight, and holding on to it for the full two seconds delays
+    // the matched route by that long after they land — for no saving, since the
+    // walk that produced it found nothing to do. Zero means never gathered, so
+    // the next call goes and looks again.
+    this.viewAt = this.view.length ? now : 0;
     return this.view;
   }
 }

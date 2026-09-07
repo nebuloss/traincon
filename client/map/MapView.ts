@@ -762,8 +762,23 @@ export class MapView {
     const key = `${this.pathFor}@${c.lng.toFixed(4)},${c.lat.toFixed(4)}/${zoom.toFixed(1)}`;
     const now = performance.now();
     if (key === this.matchedKey || now - this.matchedAt < MATCH_MS) return;
-    this.matchedKey = key;
     this.matchedAt = now;
+
+    // The rails first, because whether there are any decides whether this view
+    // can be called matched at all.
+    //
+    // The tiles load asynchronously, so the first attempt after the map opens
+    // routinely finds nothing — and an empty answer is the tiles not having
+    // arrived, not a stretch of railway nobody has surveyed. Recording the view
+    // as done on the strength of it is what stopped the idle handler above ever
+    // putting it right: idle is the moment the tiles are in, it fires at the
+    // same view, and the guard turned it away. A still map never changes view —
+    // a stopped train is held dead centre — so the matched line was never drawn
+    // and the schematic centreline, which is the line that visibly does not
+    // follow the track under it, was all that was left.
+    const rails = this.surveyed.inView(this.map);
+    if (rails.length === 0) return;
+    this.matchedKey = key;
 
     // How much route could be on screen: half the diagonal of the viewport,
     // and a third again so the drawn line reaches past the edge rather than
@@ -789,7 +804,7 @@ export class MapView {
       }
     }
 
-    const runs = matchToRails(samples, this.surveyed.inView(this.map), {
+    const runs = matchToRails(samples, rails, {
       // The same rule the train is placed by, and given the same line speed,
       // so the route comes out on the track the train is drawn on rather than
       // the one beside it.
