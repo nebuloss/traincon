@@ -44,6 +44,19 @@ QUIET="${QUIET:-0}"                 # 1 to drop the progress dots
 # otherwise be re-downloaded every time.
 APP_CONTENTS="dist scripts"
 
+# What an older layout left behind, removed on update.
+#
+# Only APP_CONTENTS is replaced wholesale, so anything else that has ever been
+# written into APP_DIR survives every update for ever. The Node server put
+# these nine here, and on the production container they sat through the whole
+# move to a Go binary that reads none of them — 19 MB, most of it node_modules,
+# on a box installed for having 2 GB of disk.
+#
+# Named explicitly rather than "delete whatever this release did not ship":
+# APP_DIR also holds data/ and .env, and those must survive an update. Removing
+# a name that is already gone costs nothing, so this list can only shrink.
+STALE_CONTENTS="node_modules dist-server src tools fixtures public package.json package-lock.json app.tar.gz"
+
 LOG_FILE="/var/log/${SERVICE_NAME}.log"
 
 
@@ -382,6 +395,11 @@ install_app() {
 
   for dir in $APP_CONTENTS; do
     rm -rf "${APP_DIR:?}/$dir"
+  done
+  # And what an older layout left, which nothing replaces because nothing
+  # ships it any more.
+  for path in $STALE_CONTENTS; do
+    rm -rf "${APP_DIR:?}/$path"
   done
   cp -r "$tmp"/. "$APP_DIR"/
   rm -rf "$tmp"
