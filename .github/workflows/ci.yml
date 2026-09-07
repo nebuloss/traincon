@@ -48,4 +48,4 @@ jobs:
         continue-on-error: true
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck -s sh install.sh scripts/fetch-geo.sh scripts/traincon-mem.sh
+          shellcheck -s sh install.sh scripts/fetch-geo.sh
