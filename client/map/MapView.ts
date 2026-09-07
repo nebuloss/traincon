@@ -243,7 +243,6 @@ export class MapView {
     addTrainBody(this.map);
   }
 
-
   /**
    * Swap the basemap when the theme changes.
    * setStyle() drops every custom source and layer, so they are rebuilt once
@@ -530,7 +529,6 @@ export class MapView {
     }
     return null;
   }
-
 
   /**
    * Give the marker the glyph for this train's type.
@@ -928,7 +926,6 @@ export class MapView {
       tier === 'cancelled' ? 'dead' : tier === 'verylate' ? 'verylate' : tier === 'late' ? 'late' : 'ok',
     );
     el.style.color = tierColor;
-
 
     // Only the pointer turns. A stopped train has no meaningful heading, so it
     // is hidden rather than left pointing at wherever it last went.
