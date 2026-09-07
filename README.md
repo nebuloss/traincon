@@ -73,9 +73,10 @@ wget -qO- https://raw.githubusercontent.com/nebuloss/traincon/main/install.sh | 
 curl -fsSL .../install.sh | SNCF_API_KEY=xxxx sh
 ```
 
-Nothing else needs installing first: the script fetches Node, the application,
-the rail geometry and the signal positions itself. Verified from a bare Alpine
-container — see `docs/clean-install.md`.
+Nothing else needs installing first: the script fetches the server binary for
+the machine's architecture, the client bundle, the rail geometry and the signal
+positions itself. Verified from a bare Alpine container — see *On a machine
+with nothing on it* below.
 
 Installs to `/opt/traincon`, runs as a service (systemd or OpenRC), listens on
 port 3000. Re-run the same command to update — `data/` is preserved so the
@@ -152,36 +153,61 @@ npm test              # the client
 npm run server:test   # gofmt, go vet, go test
 ```
 
+The two halves are named for what they are rather than what they are written
+in, and both are organised by domain — the same domains, so `rail` on one side
+answers to `rail` on the other.
+
 ```
-go/cmd/traincon/      the binary
-go/internal/gtfs/     the static schedule
-go/internal/feed/     GTFS-RT trip updates
-go/internal/rail/     the routing graph, and paths over it
-go/internal/train/    legs, delays, position
-go/internal/store/    the live picture, and everything served from it
-go/internal/api/      the JSON API and the bundle
-src/types.ts          the API contract the client reads
-src/core/             I18n · Api · Cache · Format · Bookmarks · Theme
-src/components/       Timeline · TrainCard · MapView · TrainModal · Banner
-src/views/            WatchView · SearchView
-scripts/              fetch-geo.sh, and standalone diagnostics
+server/cmd/traincon/       the binary
+server/internal/gtfs/      the static schedule
+server/internal/feed/      GTFS-RT trip updates
+server/internal/rail/      the routing graph, and paths over it
+server/internal/motion/    where along a leg a train has got to
+server/internal/train/     legs, delays, position
+server/internal/signals/   where the signals are, and which can stop a train
+server/internal/board/     the day's worst delays
+server/internal/store/     the live picture, and everything served from it
+server/internal/api/       the JSON API and the bundle
+
+client/types.ts            the API contract the client reads
+client/app/                Api · Cache · Bookmarks · Router · Theme · I18n · Format
+client/rail/               Track · track-snap · rail-match · running-side · motion
+client/train/              train-art · train-body · train-icon · stock
+client/signals/            signal-art · signal-aspect
+client/map/                MapView · layers · surveyed · framing · readout
+client/components/         Timeline · TrainCard · TrainModal · Banner · train-row
+client/views/              WatchView · SearchView · WorstView
+
+test/                      mirrors client/, plus test/install/ for install.sh
+scripts/                   fetch-geo.sh, and standalone diagnostics
 ```
 
-The contract between the two is JSON, not code. `src/types.ts` declares
-what the client expects and `go/internal/store` produces it, so the two can no
-longer be kept in agreement by the compiler — `go/internal/store/contract_test.go`
-does it instead, pinning every field name and every value that must be null
-rather than empty. It exists because comparing the two servers field by field,
-during the port, found six breaks that nothing else would have caught.
+A file exporting a class is named for it — `Api.ts`, `MapView.ts`; a file
+exporting functions is lowercase, hyphenated where it needs more than one word.
+
+The contract between the two is JSON, not code. `client/types.ts` declares
+what the client expects and `server/internal/store` produces it, so the two can
+no longer be kept in agreement by the compiler —
+`server/internal/store/contract_test.go` does it instead, pinning every field
+name and every value that must be null rather than empty. It exists because
+comparing the two servers field by field, during the port, found six breaks
+that nothing else would have caught.
 
 The behaviour that genuinely spans the boundary is under forty lines: the speed
 ceiling a train is held to, and the deep-link parser. The motion model does not
 — the server samples each leg's profile and sends it, the client only reads it,
 so there is one curve rather than two implementations of one.
 
-The upstream feed goes down regularly, so development does not depend on it:
+The upstream feed goes down regularly, so development does not depend on it.
+A capture is checked in, and the server will replay it instead of the network:
 
 ```bash
+# the capture the server's own tests run against. Paths are read by the
+# server, whose working directory is server/ — hence no prefix here.
+SNCF_FEED_FILE=internal/feed/testdata/trip-updates.pb npm run server
+
+# or keep the live feed and fall back to the capture when it fails
+SNCF_FEED_FALLBACK=internal/feed/testdata/trip-updates.pb npm run server
 ```
 
 `SNCF_FEED_SHIFT=auto` (the default) rebases a capture's timestamps onto the

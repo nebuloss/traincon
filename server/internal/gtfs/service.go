@@ -1,5 +1,5 @@
-// Package gtfs loads the SNCF static schedule: the tables that turn a feed's
-// opaque identifiers into station names, coordinates and service markers.
+// What a train is, and whether it runs today: the rolling-stock families the
+// rest of the server groups by, and the calendar behind a service marker.
 package gtfs
 
 // Family groups rolling stock by what it is, which is what decides how a train

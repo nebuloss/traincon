@@ -1,3 +1,7 @@
+// The routing graph itself, held as compressed sparse row: a node's edges are
+// a contiguous range of three flat arrays rather than a slice per node. That
+// is what makes 1.6 million vertices fit in 12.4 MB of actual numbers, and it
+// is why building it is a separate pass from loading the export.
 package rail
 
 import (

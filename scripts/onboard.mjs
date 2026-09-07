@@ -5,9 +5,9 @@
 // reachable while connected to the train's WiFi (_SNCF_WIFI_INOUI / OUIFI).
 // Nothing here needs an API key.
 //
-//   node src/onboard.mjs            # live dashboard, refreshes every 3 s
-//   node src/onboard.mjs --once     # single reading
-//   node src/onboard.mjs --json     # raw JSON, for piping
+//   node scripts/onboard.mjs            # live dashboard, refreshes every 3 s
+//   node scripts/onboard.mjs --once     # single reading
+//   node scripts/onboard.mjs --json     # raw JSON, for piping
 //
 // Endpoints (all GET, JSON):
 //   /router/api/train/gps       latitude, longitude, altitude, speed (m/s), heading, fix

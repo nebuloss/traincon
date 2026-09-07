@@ -1,3 +1,9 @@
+// Package train turns a decoded feed entry into everything derivable from it:
+// which leg it is on, how late it still is, how recently SNCF actually saw it,
+// and where to draw it.
+//
+// Positions are always derived — SNCF publishes no GPS — so every one carries a
+// quality note saying so.
 package train
 
 import (

@@ -8,7 +8,7 @@ only appears once the map is zoomed in far enough for 2.9 m to be a few pixels
 across — below that the map falls back to a disc.
 
 `{{band}}` and `{{body}}` are replaced with the livery before the file is
-rasterised — see `core/TrainArt.ts`. `band` is the flank, the colour the train
+rasterised — see `../../train/train-art.ts`. `band` is the flank, the colour the train
 is known by; `body` is the roof, which is what you actually see from up here.
 Everything else — glass, pantographs, roof equipment, door leaves — is common
 to every livery and painted in place.

@@ -1,7 +1,7 @@
 /**
  * Typed client for the server API, with the offline cache layered in.
  *
- * Every response type comes from src/types.ts, so a change to what the
+ * Every response type comes from client/types.ts, so a change to what the
  * server emits fails to compile here rather than showing up as `undefined` in
  * the interface.
  */

@@ -1,9 +1,5 @@
-// Package train turns a decoded feed entry into everything derivable from it:
-// which leg it is on, how late it still is, how recently SNCF actually saw it,
-// and where to draw it.
-//
-// Positions are always derived — SNCF publishes no GPS — so every one carries a
-// quality note saying so.
+// What each kind of train can actually do, which is what the speed shown for
+// one is held to. The client has the same table, in train/stock.ts.
 package train
 
 import "traincon/internal/gtfs"
