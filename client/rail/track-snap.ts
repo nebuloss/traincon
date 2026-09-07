@@ -140,6 +140,133 @@ export const STICKY_M = 4;
  */
 const SIDE_SLACK_M = 0.1;
 
+/**
+ * How much further than the nearest track another may be and still count as
+ * part of the same formation.
+ *
+ * The running lines of a double track are four and a half metres apart, so the
+ * pair is always within this of each other whatever the route's own error. A
+ * platform road in a station, or a siding beyond the fence, is not — and must
+ * not be, or the rule below would take the train out across the yard.
+ */
+export const PAIR_M = 6;
+
+/**
+ * Two candidates level enough across the formation to be one track arriving as
+ * two ways at a tile boundary, rather than two tracks.
+ */
+const LEVEL_M = 0.05;
+
+/** A track the point could be on, and where it sits across the formation. */
+export interface Across {
+  key: string;
+  /** How far the point would have to move to reach it, metres. */
+  d: number;
+  /**
+   * How far to the side the railway runs on this track lies, metres.
+   *
+   * Measured from the point, but — for a pair — only ever compared between
+   * candidates, which is what makes it survive the point being wrong. See
+   * chooseTrack.
+   */
+  side: number;
+}
+
+export interface ChooseOpts {
+  /** The track already in use, if there is one. */
+  prefer?: string | null;
+  /**
+   * Whether `prefer` settles the matter or merely biases it.
+   *
+   * The two callers mean different things by it. The route is seeded with the
+   * track the train was placed on, which is authoritative: the running side
+   * has already had its say, in placing the train, and the route should follow
+   * the train onto whatever it is really running on. The train is biased by
+   * the track it was on last frame, which is a guess — enough to stop noise
+   * pushing it across, never enough to hold it on the wrong side.
+   */
+  binding?: boolean;
+}
+
+/**
+ * Which of several parallel tracks the train is on.
+ *
+ * Shared with the route matcher, because the two were deciding the same thing
+ * by different rules and disagreeing. The route compared its candidates
+ * against each other; the train asked whether each candidate was on the left
+ * of where the model had put it. Those differ exactly when the model's
+ * position is not between the rails — and the two surveys sit about three
+ * metres apart on median, against two and a quarter from the centreline to
+ * either rail, so that is most of the time. Beyond that offset both rails are
+ * on the same side of the train, the absolute test admits both, and distance
+ * decided: the nearer one, which is the wrong one. That is a train drawn
+ * running on the wrong track, and it was reported as one.
+ *
+ * So a pair is settled by comparison. A common error in the position shifts
+ * both candidates by the same amount, so their order across the formation
+ * survives it, and the left-hand rail of a pair stays the left-hand rail
+ * however far out the centreline is.
+ *
+ * Past two the comparison means nothing: a station throat or a four-track
+ * section has no "side", and taking whatever lies furthest to the left would
+ * walk the train across the yard. There the track already in use is kept, and
+ * failing that the nearest — but out of those on the running side, because a
+ * preference is a bias among plausible tracks and not a licence to sit on the
+ * wrong one.
+ */
+export function chooseTrack<T extends Across>(
+  cands: readonly T[],
+  opts: ChooseOpts = {},
+): T | null {
+  if (cands.length === 0) return null;
+  const { prefer = null, binding = false } = opts;
+
+  // A binding preference is the answer, not a candidate for one. The route
+  // takes it from the track the train was actually placed on, and a train
+  // genuinely on the other line — single track, engineering works, a
+  // wrong-line movement — is still where its route belongs.
+  if (binding && prefer !== null) {
+    const held = cands.find((c) => c.key === prefer);
+    if (held) return held;
+  }
+
+  let nearestD = Infinity;
+  for (const c of cands) nearestD = Math.min(nearestD, c.d);
+  const pool = cands.filter((c) => c.d <= nearestD + PAIR_M);
+
+  if (pool.length === 2) {
+    const [a, b] = pool as [T, T];
+    // Level means one track arriving as two ways at a boundary rather than two
+    // tracks: keep the one in use, and failing that the lower key, so the
+    // answer never depends on the order the tiles were walked in.
+    if (Math.abs(a.side - b.side) < LEVEL_M) {
+      if (a.key === prefer) return a;
+      if (b.key === prefer) return b;
+      return a.key <= b.key ? a : b;
+    }
+    return a.side > b.side ? a : b;
+  }
+
+  const closest = (of: readonly T[]): T => {
+    let best = of[0]!;
+    for (const c of of) if (c.d < best.d || (c.d === best.d && c.key < best.key)) best = c;
+    return best;
+  };
+
+  // Nothing on the running side at all — single track, or a train the model
+  // has put beyond the whole formation. There is no side to be on, so the
+  // nearest track is the whole answer.
+  const onSide = cands.filter((c) => c.side > -SIDE_SLACK_M);
+  if (onSide.length === 0) return closest(cands);
+
+  const best = closest(onSide);
+  const held = onSide.find((c) => c.key === prefer);
+  // The incumbent keeps its place while it is still a plausible answer, so
+  // noise cannot push the train across; STICKY_M is a shade under the spacing
+  // of a double track, so it cannot cling to one it has genuinely left.
+  return held && held.d - best.d <= STICKY_M ? held : best;
+}
+
 /** The closest point on one particular line, wherever it is. */
 export function snapToLine(lon: number, lat: number, line: Line): Snapped | null {
   return nearest(lon, lat, null, [line], Infinity)?.hit ?? null;
@@ -166,7 +293,13 @@ export function snapToTrack(
   return found ? { ...found.hit, key: found.key } : null;
 }
 
-/** The shared search. Distances are scored, so stickiness can bias them. */
+/**
+ * The shared search: the nearest acceptable point on each track in reach.
+ *
+ * One candidate per track rather than per segment — a track arrives as several
+ * ways across tile boundaries and only its nearest point is of interest — and
+ * then chooseTrack settles which of them the train is on.
+ */
 function nearest(
   lon: number,
   lat: number,
@@ -182,14 +315,6 @@ function nearest(
   const px = lon * kx;
   const py = lat * M_PER_DEG;
 
-  // Two answers are kept: the best track on the side this railway runs on,
-  // and the best of any. The first wins if there is one — see the note above
-  // — and the other is there for single track, where there is no side.
-  let best: { hit: Snapped; key: string } | null = null;
-  let bestScore = maxM;
-  let bestSide: { hit: Snapped; key: string } | null = null;
-  let bestSideScore = maxM;
-
   // The running side, as a unit vector in (east, north). Heading north, left
   // is west; heading east, left is north. In Alsace-Moselle it is the other
   // way about, which `keepLeft` carries.
@@ -198,12 +323,10 @@ function nearest(
   const sideE = -Math.cos(rad) * hand;
   const sideN = Math.sin(rad) * hand;
 
+  const found = new Map<string, Across & { hit: Snapped }>();
+
   for (const line of lines) {
     const pts = line.points;
-    // The track it is already on gets a head start, so a rival has to be
-    // clearly nearer rather than a few centimetres nearer.
-    const bonus = prefer !== null && prefer !== undefined && line.key === prefer ? STICKY_M : 0;
-
     for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1]!;
       const b = pts[i]!;
@@ -221,11 +344,11 @@ function nearest(
       const fy = ay + t * dy;
       const d = Math.hypot(px - fx, py - fy);
       if (d > maxM) continue;
-      const score = d - bonus;
-      // Pruned against both answers, not just the overall best: the track on
-      // the correct side is often no nearer than the one beside it, and
-      // stopping at the first equally-good candidate would never see it.
-      if (score >= bestScore && score >= bestSideScore) continue;
+
+      // Only the nearest acceptable segment of this track. Checked before the
+      // bearing work below, which is the expensive part.
+      const seen = found.get(line.key);
+      if (seen && seen.d <= d) continue;
 
       // atan2(east, north), which is a compass bearing.
       let seg = (Math.atan2(dx, dy) * 180) / Math.PI;
@@ -239,29 +362,30 @@ function nearest(
         if (Math.abs(diff) > 90) seg += 180;
       }
 
-      const found = {
+      found.set(line.key, {
         key: line.key,
+        d,
+        side: (fx - px) * sideE + (fy - py) * sideN,
         hit: {
           lon: fx / kx,
           lat: fy / M_PER_DEG,
           movedM: d,
           bearing: ((seg % 360) + 360) % 360,
         },
-      };
-
-      if (score < bestScore) {
-        bestScore = score;
-        best = found;
-      }
-
-      // Which side of the train this track lies on.
-      const sideness = (fx - px) * sideE + (fy - py) * sideN;
-      if (bearing !== null && sideness > -SIDE_SLACK_M && score < bestSideScore) {
-        bestSideScore = score;
-        bestSide = found;
-      }
+      });
     }
   }
 
-  return bestSide ?? best;
+  const cands = [...found.values()];
+  if (cands.length === 0) return null;
+
+  // No direction means no side to be on, so the nearest point is the whole
+  // answer. That is what snapToLine asks for.
+  if (bearing === null) {
+    let best = cands[0]!;
+    for (const c of cands) if (c.d < best.d) best = c;
+    return best;
+  }
+
+  return chooseTrack(cands, { prefer });
 }

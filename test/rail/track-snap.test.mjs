@@ -23,6 +23,8 @@ const { MAX_BEARING_GAP, MAX_SNAP_FAR_M, MAX_SNAP_M, STICKY_M, headingGap, snapR
   await import(
   path.join(ROOT, 'client/rail/track-snap.ts')
 );
+// The route matcher, for the one test that holds the two of them together.
+const { matchToRails } = await import(path.join(ROOT, 'client/rail/rail-match.ts'));
 
 const LAT = 47.28;
 const LON = 1.38;
@@ -76,8 +78,49 @@ test('an eastbound train takes the northern track', () => {
 test('the answer does not depend on where the train started', () => {
   // The flicker was the symptom: the same train, a metre either way, chose a
   // different track. A rule that turns on the direction of travel cannot.
-  for (const offset of [-2, -1, 0, 1, 2]) {
+  //
+  // Swept well past the rails themselves, which is the case this missed when
+  // it stopped at two metres. The two surveys sit about three metres apart on
+  // median and the rails are two and a quarter from the centreline, so the
+  // coarse route is outside the pair more often than inside it — and that is
+  // where the rule used to give way. Beyond the pair both rails lie on the
+  // same side of the train, so "is this one on my left" admits both and
+  // distance decides; the nearer is the wrong one. It was reported as a train
+  // running on the wrong track, and it was.
+  for (const offset of [-8, -6, -4, -3, -2, -1, 0, 1, 2, 3, 4, 6, 8]) {
     assert.equal(snapToTrack(...at(offset, 0), 0, double).key, 'west', `from ${offset} m`);
+  }
+  // And the same the other way about, for a train running south.
+  for (const offset of [-8, -4, -3, 0, 3, 4, 8]) {
+    assert.equal(snapToTrack(...at(offset, 0), 180, double).key, 'east', `from ${offset} m`);
+  }
+});
+
+test('the train and its route are put on the same track, wherever the route is', () => {
+  // These decided the same thing by different rules for a while, and only one
+  // of them was robust: the route compared its candidates against each other,
+  // the train asked whether each was to the left of where the model had put
+  // it. They agree only while that position is between the rails.
+  //
+  // A common error shifts every candidate by the same amount, so comparing
+  // them survives it and testing each against the train's own position does
+  // not. The rule is shared now, and this is what would notice it forking
+  // again — the train drawn on one rail and its own route on the other is
+  // exactly what was seen.
+  const walk = (offset) =>
+    Array.from({ length: 11 }, (_, i) => ({
+      lon: at(offset, 0)[0],
+      lat: at(offset, (i - 5) * 40)[1],
+      bearing: 0,
+    }));
+
+  for (const offset of [-6, -3, 0, 3, 6]) {
+    const train = snapToTrack(...at(offset, 0), 0, double);
+    const runs = matchToRails(walk(offset), double, { keepLeft: () => true });
+    assert.ok(runs.length > 0, `${offset} m: the route should match`);
+    const routeEast = (runs[0][0][0] - LON) * KX;
+    assert.equal(train.key, 'west', `${offset} m: the train takes the left rail`);
+    assert.ok(routeEast < 0, `${offset} m: and the route is drawn on it too, not at ${routeEast}`);
   }
 });
 
